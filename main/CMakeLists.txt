@@ -1,0 +1,13 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "src/ble_manager.c"
+        "src/bridge.c"
+        "src/hog_client.c"
+        "src/persist.c"
+        "src/recovery_ui.c"
+        "src/state_machine.c"
+        "src/usb_bridge.c"
+    INCLUDE_DIRS
+        "include"
+)

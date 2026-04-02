@@ -1,0 +1,99 @@
+# Architecture
+
+## この文書の役割
+
+- システム全体の責務分割と境界を示す
+- 各サブシステムの詳細は専用文書へ分離する
+- 実装前の主要論点を一覧できる入口にする
+
+## 想定アーキテクチャ
+
+初期案では、ドングルは以下の役割を持つ。
+
+- キーボード側には BLE central / GATT client / HID host として動作する
+- PC 側には USB HID デバイスとして動作する
+- 単一の既知キーボードとの 1:1 接続を前提とする
+- 常時給電の USB ドングルとして運用する
+- 初期 MVP では `LaLapadGen2` を参照機として扱う
+
+## データフロー
+
+1. ドングル起動
+2. USB HID デバイスとして初期化を進める
+3. 保存済み bond 情報を読み出す
+4. bond が無ければ自動でペアリング探索へ入る
+5. bond があれば既知の対象キーボードを探索し接続する
+6. キーボード入力とポインティング入力を受け取る
+7. USB HID レポートへ変換して PC に送る
+8. 切断時は USB 側を安全状態に戻し、再接続試行を継続する
+
+## コンポーネント
+
+### BLE 側
+
+- 探索対象を絞るフィルタ
+- ペアリング / bond 管理
+- 再接続制御
+- HID 入力受信
+
+### USB 側
+
+- USB HID descriptor 定義
+- キーボード入力レポート送出
+- ポインティング入力レポート送出
+- 切断時の全 release 処理
+
+### ローカル UI
+
+- ペアリング開始操作
+- bond 初期化操作
+- 状態表示
+
+## 第一候補の実装基盤
+
+現時点では `ESP32-S3` を第一候補とする。
+理由は以下の通り。
+
+- 低コストな入手性
+- 小型 USB ドングルとして扱いやすい
+- BLE と USB Device の両方を持つ
+- 試作段階で扱いやすい開発ボードが豊富
+
+現時点の試作基板は `Seeed XIAO ESP32-S3` を基準にする。
+BLE stack の暫定第一案は `ESP-IDF NimBLE host + ESP controller` とする。
+
+## 技術的な難所
+
+難しさは、BLE や USB の個別要素より、両者の境界にある。
+
+- ペアリング、bond 永続化、再接続の状態遷移設計
+- 切断時や異常時の stuck key / stuck button 防止
+- キーボード入力とポインティング入力の USB 提示方法
+- ZMK 向けにどこまで探索条件や接続条件を絞るか
+- 最小 UI でどこまで復旧しやすさを作れるか
+
+## 設計原則
+
+- 汎用性よりも ZMK 向け最適化を優先する
+- 接続安定性が確認できるまでは機能追加を抑える
+- 物理部品の追加よりソフトウェア実装で吸収する
+- 設定アプリより先に単体で運用できることを目指す
+- 初期設計は `LaLapadGen2 + Windows` で成立することを優先し、その後に一般化を検討する
+
+## 直近で決めるべき事項
+
+- USB HID descriptor をどう最小構成にするか
+- BLE 再接続の `fast -> backoff` 移行条件と attempt 間隔をどう定めるか
+- private address / directed advertisement を含む候補判定をどこまで吸収するか
+- `BLE stack 管理 bond` とアプリ補助メタデータの境界を実装でどう分離するか
+- 1 ボタン + RGB LED の UI をどこまで単純化するか
+- ESP32-S3 を本採用するか、代替 MCU と比較するか
+
+## 詳細設計の置き場
+
+- BLE: `docs/subsystems/ble.md`
+- USB: `docs/subsystems/usb.md`
+- Recovery UI: `docs/subsystems/recovery-ui.md`
+- 状態遷移: `docs/cross-cutting/state-machine.md`
+- 永続化: `docs/cross-cutting/persistence.md`
+- 検証計画: `docs/validation/plan.md`
