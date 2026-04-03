@@ -2,6 +2,7 @@
 
 #include "zmk_usb_bridge/ble_connection.h"
 #include "zmk_usb_bridge/ble_manager.h"
+#include "zmk_usb_bridge/ble_reconnect.h"
 #include "zmk_usb_bridge/bridge.h"
 
 #include <errno.h>
@@ -759,6 +760,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_set_profile(
 
 zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_complete_discovery(uint16_t conn_handle) {
     g_ctx.discovery_active = false;
+    (void)zmk_usb_bridge_ble_reconnect_note_connected();
 
     if (!zmk_usb_bridge_hog_client_ready()) {
         return zmk_usb_bridge_ble_manager_post_event_with_payload(
@@ -785,6 +787,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_fail_discovery(
     int32_t status_code
 ) {
     g_ctx.discovery_active = false;
+    (void)zmk_usb_bridge_ble_reconnect_note_failure();
     (void)zmk_usb_bridge_ble_connection_disconnect_active(BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 
     return zmk_usb_bridge_ble_manager_post_event_with_payload(

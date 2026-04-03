@@ -2,6 +2,7 @@
 
 #include "zmk_usb_bridge/ble_connection.h"
 #include "zmk_usb_bridge/ble_manager.h"
+#include "zmk_usb_bridge/ble_reconnect.h"
 #include "zmk_usb_bridge/pairing_filter.h"
 #include "zmk_usb_bridge/ble_runtime.h"
 
@@ -168,6 +169,10 @@ static void maybe_start_connect(const bt_addr_le_t *addr, bool known_device) {
         return;
     }
 
+    if (known_device) {
+        (void)zmk_usb_bridge_ble_reconnect_note_attempt_started();
+    }
+
     status = zmk_usb_bridge_ble_manager_post_simple_event(event_type);
     if (status != ZMK_USB_BRIDGE_STATUS_OK) {
         LOG_WRN("post candidate event failed status=%d", status);
@@ -197,6 +202,10 @@ static void on_scan_recv(const struct bt_le_scan_recv_info *info, struct net_buf
             maybe_start_connect(info->addr, false);
         }
     } else if ((info->adv_props & BT_GAP_ADV_PROP_CONNECTABLE) != 0U) {
+        (void)zmk_usb_bridge_ble_reconnect_note_known_peer_seen();
+        if (!zmk_usb_bridge_ble_reconnect_should_attempt_now()) {
+            return;
+        }
         maybe_start_connect(info->addr, true);
     }
 

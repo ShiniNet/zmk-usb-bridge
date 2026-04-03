@@ -2,7 +2,14 @@
 
 #include "zmk_usb_bridge/status.h"
 
+#include <stdbool.h>
+
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_init(void);
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_enter_fast_mode(void);
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_enter_backoff_mode(void);
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_reset_fast_reconnect(void);
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_note_known_peer_seen(void);
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_note_attempt_started(void);
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_note_failure(void);
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_note_connected(void);
+bool zmk_usb_bridge_ble_reconnect_should_attempt_now(void);

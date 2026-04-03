@@ -1,6 +1,7 @@
 #include "zmk_usb_bridge/ble_connection.h"
 
 #include "zmk_usb_bridge/ble_manager.h"
+#include "zmk_usb_bridge/ble_reconnect.h"
 #include "zmk_usb_bridge/hog_client.h"
 
 #include <zephyr/bluetooth/bluetooth.h>
@@ -169,6 +170,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_on_connect_failure(
     zmk_usb_bridge_event_reason_t reason,
     int32_t status_code
 ) {
+    (void)zmk_usb_bridge_ble_reconnect_note_failure();
     LOG_INF("connect failure reason=%d status_code=%d", reason, (int)status_code);
     return zmk_usb_bridge_ble_manager_post_event_with_payload(
         ZMK_USB_BRIDGE_EVENT_CONNECT_FAILURE,
@@ -201,6 +203,8 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_on_security_failure(
     uint16_t conn_handle,
     int32_t status_code
 ) {
+    (void)zmk_usb_bridge_ble_reconnect_note_failure();
+
     if (g_active_conn != NULL) {
         (void)bt_conn_disconnect(g_active_conn, BT_HCI_ERR_AUTH_FAIL);
     }
