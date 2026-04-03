@@ -19,6 +19,7 @@
 - 単一 event queue の所有
 - BLE 内部イベントを state machine へ渡す唯一の入口
 - app 層からの高水準トリガを BLE 下位モジュールへ振り分ける
+- high-level event type と payload 正規化の責務を持つ
 
 ### `ble_runtime`
 
@@ -46,6 +47,7 @@
 - button short press による fast reconnect reset
 - advertisement 再観測時の attempt 再開条件
 - `peer visible / invisible` 判定と visibility timeout 管理
+- reconnect timer 満了は BLE 内部ローカルで扱い、state machine の public event へは出さない
 
 ### 既存の分割を維持するもの
 
@@ -100,8 +102,9 @@
 
 ### `ERASE_BONDS`
 
-- BLE stack 側の bond erase と関連 cleanup を起動する
+- BLE stack 側の bond erase と app metadata erase の両方を起動する
 - state machine は erase 手順の詳細を知らない
+- 完了通知は `BLE bond erase` と `app metadata erase` の両方成功時だけ返す
 
 ## Coordination Rules
 
@@ -109,7 +112,9 @@
 - BLE 下位モジュールは正規化済みイベントを `ble_manager` へ返す
 - `ble_manager` だけが queue を通して state machine へ渡す
 - `state_machine` は BLE stack API を直接呼ばず、高水準 command に留める
-- `known peer が visible かどうか` の局所判定は `ble_scan` / `ble_reconnect` 側に閉じ込め、state machine へは `fresh re-observation` や `visibility timeout` 相当の正規化イベントだけを渡す
+- `known peer が visible かどうか` の局所判定は `ble_scan` / `ble_reconnect` 側に閉じ込め、state machine へは `CONNECT_FAILURE` や `DISCONNECTED` などの高水準イベントだけを渡す
+- event payload の `reason` は正規化済みカテゴリ、`status_code` は Zephyr / HCI 生コードの保持先として使う
+- event payload の `capability flags` は `hog_client` の発見結果を state machine とログへ伝えるために使う
 
 ## File Weight Guideline
 

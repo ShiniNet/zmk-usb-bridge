@@ -97,6 +97,8 @@
 - `state-machine.md` の状態遷移は、この BLE manager queue を唯一の更新入口とする
 - USB への release 要求は BLE callback から直接行わず、状態遷移処理側で発火する
 - Zephyr の explicit central scan を前提に、`bt_conn_le_create()` の直前には scan を停止し、接続失敗または切断後に scan を再開する
+- state machine へ渡す event は高水準 type を維持し、失敗種別や capability 情報は payload の `reason` と `capability flags` に載せる
+- visibility timeout や reconnect timer 満了のような BLE 内部ローカル事情は state machine へ直接見せない
 
 ### Post-Connect HID Bring-up
 
@@ -215,6 +217,7 @@
 - local bond が読めない、または存在しない場合は既知デバイス扱いをやめて `pairing_scan` へ戻す
 - local bond はあるが認証や暗号化で不整合が確定した場合は `recovery_required` とし、ボタン長押しによる bond erase 導線を用意する
 - 接続断時は USB 側へ release 処理を要求して stuck input を防ぐ
+- bond erase は `BLE bond` と `app metadata` の両方成功時だけ完了扱いとし、中途半端な消去状態を成功として扱わない
 
 ## Related Documents
 

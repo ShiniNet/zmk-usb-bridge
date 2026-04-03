@@ -44,6 +44,8 @@
 - 既存 bond の不整合が確定した場合のみ `recovery_required` に入る
 - unresolved private address の再検出失敗だけでは `recovery_required` に入らない
 - bond erase 後は `pairing_scan` に遷移する
+- BLE command を伴う遷移では `command 起動成功` を確認してから state を更新する
+- `peer invisible` や `fresh re-observation` は BLE 内部ローカル状態として扱い、state machine の public event には上げない
 
 ## Events
 
@@ -52,8 +54,6 @@
 - startup persist 判定完了 (`bond あり` / `bond なし`)
 - BLE 初期化完了
 - 既知デバイス広告検出
-- 既知デバイス広告見失い
-- reconnect attempt timer 満了
 - Pairing 要求
 - Pairing 成功 / 失敗
 - HID bring-up 完了 / 失敗
@@ -62,6 +62,13 @@
 - USB 側エラー
 - ボタン短押し
 - Bond erase 操作
+
+### Event Payload Policy
+
+- event type は高水準で保ち、細かな BLE ローカル事情は payload の `reason` と `capability flags` に載せる
+- `CONNECT_FAILURE`、`HID_FAILURE`、`DISCONNECTED` は payload の `reason` と `status_code` で具体原因を表す
+- `HID_READY` は payload の `capability flags` で `keyboard / consumer / pointer` の有無を運べるようにする
+- `peer invisible`、visibility timeout、reconnect timer 満了は `ble_scan` / `ble_reconnect` に閉じ込める
 
 ## BLE Commands
 
@@ -139,6 +146,8 @@
 ### `bond_erasing`
 
 - 永続化データを消去し、初期状態へ戻す
+- `BOND_ERASE_COMPLETE` は `BLE bond erase` と `app metadata erase` の両方成功時だけ発火させる
+- どちらか一方でも失敗した場合は完了扱いせず、この状態に留まる
 
 ## Failure Handling
 

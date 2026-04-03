@@ -55,7 +55,7 @@
 - 初回ペアリング直後ではなく、`security 成立 + required HOG profile 検証通過` 後に採用情報を保存する
 - 起動時に読み出し
 - 補助メタデータが欠損していても bond が有効なら既知デバイス再接続へ進む
-- bond erase 操作時に消去
+- bond erase 操作時は `BLE bond erase` と組み合わせて消去し、両方成功時だけ完了扱いにする
 - フォーマット変更時に移行または破棄
 - 補助メタデータを破棄した場合は、次回正常接続成功時に再生成する
 
@@ -68,6 +68,7 @@
 - `peer address snapshot` が現在広告アドレスと一致しないことだけでは fault にしない
 - `peer address snapshot` が現在広告アドレスと不一致でも、それだけで reconnect 候補から外す根拠にはしない
 - bond erase 完了後に古い情報を参照しない
+- `metadata erase` だけ成功して `BLE bond erase` が失敗した場合や、その逆は完了扱いしない
 
 ## Constraints
 

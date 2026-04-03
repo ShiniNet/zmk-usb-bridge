@@ -34,12 +34,17 @@ static zmk_usb_bridge_status_t transition_to(
     zmk_usb_bridge_state_t next_state,
     zmk_usb_bridge_ble_command_t command
 ) {
-    zmk_usb_bridge_status_t status = set_state(next_state);
+    zmk_usb_bridge_status_t status = dispatch_ble_command(command);
     if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        LOG_WRN("command=%d failed before state=%d status=%d", command, next_state, status);
         return status;
     }
 
-    return dispatch_ble_command(command);
+    return set_state(next_state);
+}
+
+static zmk_usb_bridge_status_t transition_to_state_only(zmk_usb_bridge_state_t next_state) {
+    return set_state(next_state);
 }
 
 static zmk_usb_bridge_status_t advance_startup_gate(void) {
@@ -113,7 +118,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_handle_event(const zmk_usb_
     case ZMK_USB_BRIDGE_EVENT_KNOWN_DEVICE_FOUND:
     case ZMK_USB_BRIDGE_EVENT_PAIRING_CANDIDATE_FOUND:
     case ZMK_USB_BRIDGE_EVENT_CONNECT_SUCCESS:
-        return transition_to(ZMK_USB_BRIDGE_STATE_CONNECTING, ZMK_USB_BRIDGE_BLE_COMMAND_NONE);
+        return transition_to_state_only(ZMK_USB_BRIDGE_STATE_CONNECTING);
     case ZMK_USB_BRIDGE_EVENT_CONNECT_FAILURE:
     case ZMK_USB_BRIDGE_EVENT_HID_FAILURE:
         return transition_to(
@@ -122,7 +127,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_handle_event(const zmk_usb_
                        : ZMK_USB_BRIDGE_BLE_COMMAND_START_PAIRING_SCAN
         );
     case ZMK_USB_BRIDGE_EVENT_HID_READY:
-        return transition_to(ZMK_USB_BRIDGE_STATE_CONNECTED, ZMK_USB_BRIDGE_BLE_COMMAND_NONE);
+        return transition_to_state_only(ZMK_USB_BRIDGE_STATE_CONNECTED);
     case ZMK_USB_BRIDGE_EVENT_DISCONNECTED: {
         zmk_usb_bridge_status_t status = zmk_usb_bridge_bridge_release_all();
         if (status != ZMK_USB_BRIDGE_STATUS_OK) {
