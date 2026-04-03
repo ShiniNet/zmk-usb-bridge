@@ -21,19 +21,16 @@ static bool check_status(const char *step, zmk_usb_bridge_status_t status) {
 }
 
 static zmk_usb_bridge_status_t post_startup_events(void) {
-    const zmk_usb_bridge_event_t ble_synced_event = {
-        .type = ZMK_USB_BRIDGE_EVENT_BLE_SYNCED,
-    };
-    const zmk_usb_bridge_event_t persist_ready_event = {
-        .type = ZMK_USB_BRIDGE_EVENT_PERSIST_READY_NO_BOND,
-    };
-
-    zmk_usb_bridge_status_t status = zmk_usb_bridge_ble_manager_post_event(&ble_synced_event);
+    zmk_usb_bridge_status_t status = zmk_usb_bridge_ble_manager_post_simple_event(
+        ZMK_USB_BRIDGE_EVENT_BLE_SYNCED
+    );
     if (status != ZMK_USB_BRIDGE_STATUS_OK) {
         return status;
     }
 
-    return zmk_usb_bridge_ble_manager_post_event(&persist_ready_event);
+    return zmk_usb_bridge_ble_manager_post_simple_event(
+        ZMK_USB_BRIDGE_EVENT_PERSIST_READY_NO_BOND
+    );
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_startup_run(void) {

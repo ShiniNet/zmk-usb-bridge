@@ -6,6 +6,7 @@
 #include "zmk_usb_bridge/ble_scan.h"
 #include "zmk_usb_bridge/hog_client.h"
 #include "zmk_usb_bridge/pairing_filter.h"
+#include "zmk_usb_bridge/persist.h"
 #include "zmk_usb_bridge/state_machine.h"
 
 #include <zephyr/kernel.h>
@@ -24,6 +25,22 @@ K_THREAD_STACK_DEFINE(g_event_task_stack, ZMK_USB_BRIDGE_EVENT_TASK_STACK_SIZE);
 
 static struct k_thread g_event_thread;
 static bool g_event_thread_started;
+
+static zmk_usb_bridge_event_t make_event(
+    zmk_usb_bridge_event_type_t type,
+    zmk_usb_bridge_event_reason_t reason,
+    int32_t status_code,
+    uint16_t conn_handle,
+    uint16_t capability_flags
+) {
+    return (zmk_usb_bridge_event_t) {
+        .type = type,
+        .status_code = status_code,
+        .conn_handle = conn_handle,
+        .capability_flags = capability_flags,
+        .reason = reason,
+    };
+}
 
 static zmk_usb_bridge_status_t execute_command(zmk_usb_bridge_ble_command_t command) {
     switch (command) {
@@ -57,7 +74,12 @@ static zmk_usb_bridge_status_t execute_command(zmk_usb_bridge_ble_command_t comm
             return status;
         }
 
-        return zmk_usb_bridge_ble_runtime_erase_bonds();
+        status = zmk_usb_bridge_ble_runtime_erase_bonds();
+        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+            return status;
+        }
+
+        return zmk_usb_bridge_persist_erase_all();
     }
     default:
         return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
@@ -107,7 +129,13 @@ static void zmk_usb_bridge_ble_manager_event_task(void *arg1, void *arg2, void *
 
         const zmk_usb_bridge_status_t status = zmk_usb_bridge_state_machine_handle_event(&event);
         if (status != ZMK_USB_BRIDGE_STATUS_OK) {
-            LOG_WRN("event dispatch failed type=%d status=%d", event.type, status);
+            LOG_WRN(
+                "event dispatch failed type=%d reason=%d status_code=%d status=%d",
+                event.type,
+                event.reason,
+                (int)event.status_code,
+                status
+            );
         }
     }
 }
@@ -145,9 +173,6 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_manager_start_scan(void) {
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_manager_reset_fast_reconnect(void) {
-    const zmk_usb_bridge_event_t event = {
-        .type = ZMK_USB_BRIDGE_EVENT_BUTTON_SHORT_PRESS,
-    };
     zmk_usb_bridge_status_t status;
 
     status = zmk_usb_bridge_ble_reconnect_reset_fast_reconnect();
@@ -156,7 +181,9 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_manager_reset_fast_reconnect(void) {
     }
 
     LOG_INF("reset_fast_reconnect");
-    return zmk_usb_bridge_ble_manager_post_event(&event);
+    return zmk_usb_bridge_ble_manager_post_simple_event(
+        ZMK_USB_BRIDGE_EVENT_BUTTON_SHORT_PRESS
+    );
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_manager_execute_command(
@@ -180,4 +207,36 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_manager_post_event(const zmk_usb_brid
     }
 
     return ZMK_USB_BRIDGE_STATUS_OK;
+}
+
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_manager_post_simple_event(
+    zmk_usb_bridge_event_type_t type
+) {
+    const zmk_usb_bridge_event_t event = make_event(
+        type,
+        ZMK_USB_BRIDGE_EVENT_REASON_NONE,
+        0,
+        0,
+        ZMK_USB_BRIDGE_CAPABILITY_NONE
+    );
+
+    return zmk_usb_bridge_ble_manager_post_event(&event);
+}
+
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_manager_post_event_with_payload(
+    zmk_usb_bridge_event_type_t type,
+    zmk_usb_bridge_event_reason_t reason,
+    int32_t status_code,
+    uint16_t conn_handle,
+    uint16_t capability_flags
+) {
+    const zmk_usb_bridge_event_t event = make_event(
+        type,
+        reason,
+        status_code,
+        conn_handle,
+        capability_flags
+    );
+
+    return zmk_usb_bridge_ble_manager_post_event(&event);
 }

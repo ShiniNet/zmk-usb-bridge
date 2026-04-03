@@ -40,6 +40,7 @@
 - `bt_conn_le_create()` と切断要求
 - `connected` / `disconnected` / `security_changed` の正規化
 - active connection context の管理
+- Zephyr callback から直接 state machine を触らず、wrapper 関数経由で `CONNECT_SUCCESS` / `CONNECT_FAILURE` / `DISCONNECTED` を post する
 
 ### `ble_reconnect`
 
@@ -51,7 +52,7 @@
 
 ### 既存の分割を維持するもの
 
-- `hog_client`: post-connect bring-up と report subscription
+- `hog_client`: post-connect bring-up、report subscription、`HID_READY` / `HID_FAILURE` の capability 付き正規化
 - `pairing_filter`: unbonded pairing 候補条件
 - `persist`: app metadata のみを扱う
 - `state_machine`: USB / BLE / recovery をまたぐ状態遷移
