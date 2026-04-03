@@ -33,6 +33,7 @@
 - 設定アプリなしでの基本運用が必須
 - 外部ボタンは 1 個
 - 状態表示には RGB の `USRLED` を使う
+- `Seeed XIAO BLE` では board DTS が持つ `led0(red) / led1(blue) / led2(green)` を `USRLED` として使う
 - ボンド削除はボタン長押しで行う
 - USB 状態に応じた専用 LED パターンは MVP では増やさず、BLE / recovery 状態中心で表現する
 
@@ -64,10 +65,12 @@
 - `scanning_known_device`: `黄の緩い点滅`
 - `reconnecting_fast`: `黄の緩い点滅`
 - `reconnecting_backoff`: `黄の緩い点滅`
+- `connecting`: `黄の緩い点滅`
 - `connected`: `緑の点灯`
 - `recovery_required`: `赤の遅い点滅`
 - `bond_erasing`: `赤の速い点滅`
 - `fatal_error`: `赤の点灯`
+- `boot` と `usb_ready`: 消灯
 
 ## Failure Handling
 

@@ -61,6 +61,7 @@
 - 再接続中の USB 側挙動
 - エラー復旧と UI の整合
 - RGB LED とボタン操作の整合
+- `Seeed XIAO BLE` の `led0/1/2` が state machine の各状態で期待どおりの色と点滅になること
 - bond erase 後の自動 `pairing_scan` 復帰
 
 ### Build / Distribution スパイク
