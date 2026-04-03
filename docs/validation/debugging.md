@@ -11,6 +11,8 @@
 - `HID` は引き続きホスト評価に使い、追加の `CDC ACM` を log/console 専用 COM port として使う
 - build では local snippet `zub-usb-logging` を使う
 - 運用感は `ZMK` の `zmk-usb-logging` snippet と同様に、`west build -S ...` で USB logging を有効化する方式に寄せる
+- Windows での host-side log capture は workspace 直下 `scripts/start_zmk_usb_bridge_session_windows.ps1` を第一候補にする
+- script は repository 追跡外の作業用 helper として置き、`ExecutionPolicy Bypass` 付きで起動する
 
 ## Why This Is The Primary Path
 
@@ -40,35 +42,54 @@ west build -b seeeduino_xiao_ble zmk-usb-bridge --pristine -S zub-usb-logging
 - 書き込みは通常どおり `zephyr.uf2` を `XIAO BLE` mass storage へコピーしてよい
 - `UF2` 書き込み後にホストへ再接続すると、`HID` に加えて `CDC ACM` の `COM port` が見える想定
 
+## Preferred Host Tool
+
+- Windows PowerShell から workspace 直下 `scripts/start_zmk_usb_bridge_session_windows.ps1` を呼ぶ
+- `\\wsl.localhost\...` 経由の script 実行では security warning が出るため、`ExecutionPolicy Bypass` を付ける
+- script は `COM port` の open、log 保存、summary 生成までまとめて扱う
+- 実行結果は workspace の `artifacts/test_runs/<RunId>/` に保存する
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\\wsl.localhost\<distro>\...\scripts\start_zmk_usb_bridge_session_windows.ps1" -ComPort COM12
+```
+
+### Optional Helpers
+
+- `COM port` が未確定なら `-ListPorts` を先に使う
+- `COM port` が固定なら `-ComPort COMx` を明示して使う
+- 早い boot log を見たい場合は、script の `Monitoring started.` を確認してから board を reset する
+
 ## Log Capture Procedure
 
 1. `zub-usb-logging` build を `UF2` で書き込む
 2. 実機を USB ホストへ接続する
-3. Windows の `Device Manager` で追加された `COMx` を確認する
-4. `PuTTY`、`Arduino Serial Monitor`、または同等の serial monitor でその `COMx` を開く
-5. serial 設定は `115200 8N1, no flow control` を第一候補にする
-6. 早い boot log を見たい場合は、monitor を先に開いてから board を reset する
-7. 以後の `LOG_INF/WRN/ERR` と console 出力をその `COM port` で観測する
+3. 必要なら Windows の `Device Manager` または script の `-ListPorts` で `COMx` を確認する
+4. Windows PowerShell から `ExecutionPolicy Bypass` 付きで `start_zmk_usb_bridge_session_windows.ps1` を起動する
+5. 早い boot log を見たい場合は、script の `Monitoring started.` を確認してから board を reset する
+6. 以後の `LOG_INF/WRN/ERR` と console 出力を terminal 上で観測する
+7. 停止後は `artifacts/test_runs/<RunId>/` の `serial.log` と `summary.json` を必要に応じて共有する
 
 ## Recommended Workflow
 
-- 当面の実運用では `VSCode` の serial monitor を使って `COM port` を監視する
+- 当面の実運用では `start_zmk_usb_bridge_session_windows.ps1` を標準導線にする
 - build / flash / 実機操作は手元で行い、必要なログだけを Codex に戻して解析する
-- これにより、`WSL` 経由の monitor 起動タイミング差で boot 冒頭が欠ける問題を避けやすい
+- script 側で `serial.log` と `summary.json` まで揃うので、run artifact をそのまま共有しやすい
+- `ExecutionPolicy Bypass` を command line 側で明示することで、`\\wsl.localhost\...` 実行時の手動応答を避ける
 
-### Manual Reset Workflow
+### Script-Based Reset Workflow
 
-1. `VSCode` の serial monitor で対象の `COM port` を開く
-2. monitor が開いたことを確認してから board を手元で reset する
-3. 出力された boot log を保存するかコピーする
-4. 必要なログを Codex に渡して解析する
+1. Windows PowerShell から `ExecutionPolicy Bypass` 付きで script を起動する
+2. `Monitoring started.` を確認してから board を手元で reset する
+3. session を止めるまで terminal 上で log を確認する
+4. `artifacts/test_runs/<RunId>/` の出力を必要に応じて Codex に渡して解析する
 
 ## Important Notes
 
-- 第一候補では、`USB COM port` を監視すればよい
+- 第一候補では、`USB COM port` を script 経由で監視すればよい
 - ただしこれは `release` の USB descriptor と同一ではなく、`CDC ACM` を追加した開発専用構成になる
 - Windows での最終 HID 列挙評価は、`release` の `HID-only` build でも別途確認する
 - `ZMK` と同様に、早期 boot log が必要なら startup delay をさらに延ばす余地がある
+- workspace 直下 `scripts/` は repository 追跡対象ではない前提で運用する
 
 ## Secondary Path: SWD + RTT
 

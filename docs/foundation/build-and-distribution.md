@@ -24,6 +24,8 @@
 - repository 既定の `config/user.conf` は application 側で自動取り込みする
 - CI 専用差分だけを追加したい場合は `west build ... -- -DEXTRA_CONF_FILE=config/ci.conf` を使う
 - 実機 bring-up の第一候補は `west build -S zub-usb-logging` による `USB CDC ACM logging` 導線とする
+- Windows での実機 log capture は workspace 直下 `scripts/start_zmk_usb_bridge_session_windows.ps1` を第一候補にする
+- `\\wsl.localhost\...` 経由で script を呼ぶ場合は `ExecutionPolicy Bypass` 付き PowerShell 起動を標準にする
 - `UF2` 書き込みを試作主導線とし、必要に応じて外部 debug probe による `west flash` を補助導線にする
 - bring-up で詳細診断が必要な場合は、SWD probe を使った `J-Link` 系デバッグを許容する
 
@@ -40,6 +42,7 @@
 - `release profile` では開発専用 console を必須にしない
 - `dev profile` は bring-up と調査のための補助構成とする
 - `dev-usb-logging profile` は `USB CDC ACM` による `COM port` 監視を第一候補とする
+- host 側の capture は PowerShell helper script に寄せ、`serial.log` と summary を run artifact として残す
 - `dev profile` では USB CDC ACM や追加ログを許容し、必要時のみ `RTT` を補助利用する
 - `release profile` では USB HID の提示形態を優先し、不要な debug interface を減らす
 
@@ -54,6 +57,7 @@
 - `config/ci.conf`: CI 実行都合の差分だけを持つ設定
 - `config/dev-rtt.conf`: 開発者向け `RTT logging` 差分
 - `snippets/zub-usb-logging/`: 開発者向け `USB CDC ACM logging` snippet
+- workspace `scripts/start_zmk_usb_bridge_session_windows.ps1`: Windows 実機 log capture helper
 
 ### Composition Rules
 
