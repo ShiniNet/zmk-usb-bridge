@@ -52,6 +52,8 @@
 - startup persist 判定完了 (`bond あり` / `bond なし`)
 - BLE 初期化完了
 - 既知デバイス広告検出
+- 既知デバイス広告見失い
+- reconnect attempt timer 満了
 - Pairing 要求
 - Pairing 成功 / 失敗
 - HID bring-up 完了 / 失敗
@@ -97,7 +99,7 @@
 - 接続試行の許可は bond / identity 条件で絞る
 - scan は待機中に継続し、connect attempt の直前だけ停止する
 - identity 解決できない private address を見つけても、即 `recovery_required` へは進まず scan 継続を優先する
-- 既知広告を新たに観測した時点では、backoff 状態を持ち越さず `connecting` へ進める
+- `peer invisible` からの fresh re-observation を受けたら、backoff 状態を持ち越さず `connecting` へ進める
 
 ### `connecting`
 
@@ -114,15 +116,19 @@
 
 - 切断直後の短周期再接続フェーズ
 - scan は待機中に再開し、connect attempt を短い間隔で許可する
-- 既知広告を再観測した直後も、このフェーズへ戻してよい
+- `fast reconnect` の attempt schedule は `即時 + 0.5s + 1s + 2s` の 4 回を基準とする
+- 同じ known peer が visible のまま 4 回連続失敗したら `reconnecting_backoff` へ移る
+- `peer invisible` になった場合は pending attempt を捨てて `scanning_known_device` へ戻す
+- fresh re-observation を受けた直後も、このフェーズへ戻してよい
 - ボタン短押しでこの状態へ戻し、attempt schedule を初期化してよい
-- 暫定仕様では `即時 + 0.5s + 1s + 2s` の 4 回までをこのフェーズに含める
 
 ### `reconnecting_backoff`
 
 - 相手が見えているのに connect attempt が連続失敗した場合の低負荷再接続フェーズ
 - scan は待機中に再開し、connect attempt を長めの間隔で許可する
-- 暫定仕様では attempt 間隔を `5s -> 10s cap` とする
+- attempt 間隔は `5s`、以後 `10s cap` とする
+- `peer invisible` になった場合は pending attempt を捨てて `scanning_known_device` へ戻す
+- fresh re-observation を受けたら `reconnecting_fast` へ戻し、attempt schedule を初期化する
 
 ### `recovery_required`
 
@@ -142,6 +148,7 @@
 - 補助メタデータ破損だけでは `recovery_required` に入れず、再生成可能な fault として扱う
 - `connecting` 中の bring-up 失敗は、pairing と reconnect で戻り先を分けて扱う
 - USB 側致命エラー時のみ `fatal_error` を許容する
+- `bond/auth mismatch` は reconnect schedule を継続せず `recovery_required` を優先する
 
 ## Validation Needed
 
@@ -151,6 +158,7 @@
 - 継続再接続がホストや SoC に悪影響を与えないか
 - `scan restart + attempt backoff` の組み合わせで reconnect 体感が悪化しないか
 - metadata-only 破損で `recovery_required` へ誤遷移しないか
+- `peer invisible -> fresh re-observation -> 即 reconnect` の列が過剰再試行なく成立するか
 
 ## Related Documents
 

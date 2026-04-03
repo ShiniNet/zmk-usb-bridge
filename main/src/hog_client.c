@@ -24,7 +24,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_start_discovery(uint16_t conn_
 }
 
 bool zmk_usb_bridge_hog_client_ready(void) {
-    return profile.has_keyboard_input && profile.has_consumer_input && profile.has_mouse_input;
+    return profile.has_keyboard_input;
 }
 
 const zmk_usb_bridge_hog_profile_t *zmk_usb_bridge_hog_client_profile(void) {

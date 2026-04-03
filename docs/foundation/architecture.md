@@ -95,10 +95,9 @@
 - 初期設計は `LaLapadGen2 + Windows` で成立することを優先し、その後に一般化を検討する
 - core の状態遷移と bridge 契約は platform 依存 API から切り離す
 
-## 直近で決めるべき事項
+## 直近で詰める事項
 
 - USB HID descriptor をどう最小構成にするか
-- BLE 再接続の `fast -> backoff` 移行条件と attempt 間隔をどう定めるか
 - explicit scan 方式での `scan stop -> connect -> fail/disconnect で scan restart` をどこまで単純に実装するか
 - private address / directed advertisement を含む候補判定をどこまで吸収するか
 - `BLE stack 管理 bond` とアプリ補助メタデータの境界を実装でどう分離するか

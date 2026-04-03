@@ -19,6 +19,8 @@
 - explicit scan 方式で `scan stop -> connect attempt -> fail/disconnect で scan restart` が安定して回ることの確認
 - 既知広告の再観測で即 connect attempt へ戻ることの確認
 - `fast reconnect` から `backoff reconnect` へ移る閾値の妥当性確認
+- `peer invisible` を `2s` で判定しても、通常広告ゆらぎで不要な fast reset が起きないことの確認
+- 同一 peer が見え続けている間に、広告 packet ごとに connect attempt を打たないことの確認
 - metadata-only 破損からの自動回復確認
 - private address を含む candidate 判定の成立確認
 - unresolved private address を誤って recovery 扱いしないことの確認
@@ -27,7 +29,8 @@
 - Zephyr Bluetooth callback と BLE manager queue の責務分離で実装複雑度を抑えられるか
 - metadata 更新契機を `security 成立後` に置いても不足がないことの確認
 - post-connect bring-up を `connected` 入口条件としても reconnect 体感を損ねないことの確認
-- `Keyboard=1`、`Consumer=2`、`Mouse=3` の report reference 前提が `LaLapadGen2` 実機で成立することの確認
+- `Keyboard=1` を必須 report reference として扱って成立することの確認
+- `Consumer=2` と `Mouse=3` は存在しても存在しなくても bring-up 完了条件を壊さないことの確認
 - `name allowlist` を設定した場合だけ補助フィルタとして効くことの確認
 - active pairing scan で advertisement または scan response から allowlist 名を安定して取得できることの確認
 - bonded reconnect が passive scan のみで成立し、local name 取得に依存しないことの確認

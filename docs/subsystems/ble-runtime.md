@@ -45,6 +45,7 @@
 - fast reconnect と backoff reconnect の schedule
 - button short press による fast reconnect reset
 - advertisement 再観測時の attempt 再開条件
+- `peer visible / invisible` 判定と visibility timeout 管理
 
 ### 既存の分割を維持するもの
 
@@ -85,11 +86,13 @@
 
 - fast reconnect schedule を初期化する
 - known-device scan 再開までを BLE 側で面倒を見る
+- failure streak を 0 に戻し、`即時 + 0.5s + 1s + 2s` の attempt 計画を作る
 
 ### `ENTER_RECONNECT_BACKOFF`
 
 - backoff reconnect schedule を有効化する
 - 次の attempt 許可タイミングは BLE 側で管理する
+- MVP では `5s`、以後 `10s cap` の attempt 計画を使う
 
 ### `STOP_SCAN`
 
@@ -106,6 +109,7 @@
 - BLE 下位モジュールは正規化済みイベントを `ble_manager` へ返す
 - `ble_manager` だけが queue を通して state machine へ渡す
 - `state_machine` は BLE stack API を直接呼ばず、高水準 command に留める
+- `known peer が visible かどうか` の局所判定は `ble_scan` / `ble_reconnect` 側に閉じ込め、state machine へは `fresh re-observation` や `visibility timeout` 相当の正規化イベントだけを渡す
 
 ## File Weight Guideline
 

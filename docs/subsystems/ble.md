@@ -104,8 +104,9 @@
 - bring-up の第一案は `security establish -> service discovery -> report discovery -> input report subscribe` の順とする
 - HID service、Report Map、Report characteristics、CCCD を見つけられない場合は、MVP では `connected` に入らず connect failure 扱いで切断してよい
 - Input Report notify/indicate の購読完了をもって `入力橋渡し開始可能` とみなす
-- `connected` は `bond / security 成立済み` かつ `必要な input report subscription 完了済み` のときだけ入る
-- Consumer Control や Pointer に必要な report が欠ける場合の扱いは MVP では `LaLapadGen2` 必須前提で fail-fast 寄りにする
+- `connected` は `bond / security 成立済み` かつ `keyboard input report subscription 完了済み` のときだけ入る
+- `consumer` と `pointer` は MVP では optional capability とし、欠けていても `connected` を妨げない
+- optional report が見つかった場合は subscribe と橋渡しを有効化し、見つからない場合は capability absent としてログに留める
 - host LED output や feature report は MVP の bring-up 完了条件に含めない
 
 ### Startup Readiness Gate
@@ -117,11 +118,12 @@
 
 ### HOG Report Handling Baseline
 
-- keyboard、consumer、pointer の各 input report は `report reference` 情報と characteristic handle の対応で識別する
+- keyboard、consumer、pointer の各 input report は、存在する場合に `report reference` 情報と characteristic handle の対応で識別する
 - report map 全体の厳密解釈より、`必要 input report の発見と subscribe` を優先する
 - HOG input notification の payload は `report_id` 付き全体 struct ではなく、該当 report の `body` 部分として扱う
 - report notification 受信後の USB bridge 変換は BLE callback で直接行わず、BLE manager queue へ渡して USB 側へ橋渡しする
 - unknown report type や MVP 対象外 report はログ対象に留め、bridge の primary path を止めない
+- MVP の bring-up 完了条件に含める必須 role は `keyboard input` のみとする
 - reconnect 後は previous discovery cache を盲信せず、最低限の report availability を再確認する
 
 ## Scan Policy
@@ -144,7 +146,7 @@
 - 既知 bond に対応する相手だけを接続候補にする
 - local name 取得や scan response は不要とし、local name や RSSI は認証条件にしない
 - privacy 解決済み identity を candidate 判定に使える場合はそれを最優先する
-- 既知デバイスの広告を新たに観測した時点では、backoff 状態を持ち越さず即 `scan stop -> connect attempt` 候補に戻す
+- `peer invisible` になった後の fresh re-observation では、backoff 状態を持ち越さず即 `scan stop -> connect attempt` 候補に戻す
 
 ## Discovery / Identification
 
@@ -154,8 +156,8 @@
 - 利用者には対象キーボードだけをペアリングモードにしてもらう
 - 候補判定条件は `Scan Policy` の `Unbonded Pairing Scan` を正本とする
 - 最初に接続成立したキーボードを即採用せず、post-connect validation を通過した相手だけを採用する
-- post-connect validation では、少なくとも `HIDS service 存在`、`必要 input report 発見`、`必要 report reference の整合` を確認する
-- `LaLapadGen2` 前提の MVP では `Keyboard=1`、`Consumer=2`、`Mouse=3` の report reference 条件を採用条件にしてよい
+- post-connect validation では、少なくとも `HIDS service 存在`、`keyboard input report 発見`、`keyboard report reference の整合` を確認する
+- `LaLapadGen2` 前提の MVP では `Keyboard=1` を必須採用条件とし、`Consumer=2` と `Mouse=3` は存在すれば整合確認する optional capability として扱ってよい
 - post-connect validation に失敗した相手は `adopt しない`
 
 ### 既知デバイス再接続
@@ -191,17 +193,22 @@
 - 接続断や起動時の再接続は自動で開始する
 - 基本方針は `継続再接続` とする
 - scan は `接続試行中だけ停止し、それ以外の待機時間では再開する` 方針とする
-- 既知デバイス広告を観測した時点では、まず即 `scan stop -> connect attempt` を許可する
-- 起動直後、切断直後、または `既知デバイス広告の再観測直後` は `fast reconnect` として短い間隔で接続を試みる
-- `backoff reconnect` は `相手が見えているのに connect attempt が連続失敗する場合` にだけ使う
-- 長時間未接続でも、接続試行中以外は scan を再開し続け、次に広告が見えた瞬間に即 connect attempt へ戻れる設計を目指す
-- MVP の第一案では connect attempt の目安を `即時 + 0.5s + 1s + 2s` とし、その後に失敗が続く場合だけ `5s -> 10s cap` の backoff へ移る
-- button 短押し時は backoff 状態をリセットし、`fast reconnect` へ戻してよい
+- `fast reconnect` への入口は `起動直後`、`切断直後`、`ボタン短押し`、または `既知 peer を見失った後の fresh re-observation` とする
+- `fast reconnect` の attempt schedule は `即時 + 0.5s + 1s + 2s` の 4 回を基準とする
+- connect failure の連続回数は `bt_conn_le_create()` 失敗、`connected` 後の security failure、または `HID ready` 前の bring-up failure を 1 回として数える
+- `backoff reconnect` は `同じ known peer が visible のまま 4 回連続失敗した場合` にだけ入る
+- `backoff reconnect` の attempt schedule は `5s`、以後 `10s cap` を繰り返す
+- known peer が `2s` 以上観測されなかった場合は `peer invisible` とみなし、pending reconnect delay を破棄して `scanning_known_device` 相当の待機へ戻る
+- `fresh re-observation` は `peer invisible` になった後に最初の既知広告を観測した瞬間だけを指し、広告 packet ごとには発火させない
+- 長時間未接続でも、接続試行中以外は scan を再開し続け、`fresh re-observation` 時に即 connect attempt へ戻れる設計を目指す
+- button 短押し時は visible 状態と failure streak をリセットし、`fast reconnect` へ戻してよい
+- `bond/auth mismatch` が確定した場合は `backoff reconnect` を継続せず、`recovery_required` へ送る
 
 ## Failure Handling
 
 - 接続失敗時はまず `fast reconnect` を行い、連続失敗時のみ再接続バックオフへ移行する
 - 接続失敗時は `scan restart` を優先し、次の connect attempt だけを delay 制御する
+- known peer が見えていない間は delay 満了だけで connect attempt を起こさず、scan 継続を優先する
 - 誤った対象へ接続するリスクは `対象キーボードのみを pairing mode にする` 運用で最小化する
 - 誤採用リスクは `connectable + HID service + keyboard appearance` と post-connect validation でさらに下げる
 - 補助メタデータの欠損、破損、version 不一致は `metadata discard + 再生成待ち` として扱う

@@ -3,7 +3,8 @@
 ## Goal
 
 - PC から USB HID デバイスとして安定認識される
-- キーボード入力とポインティング入力を USB 側へ実用的に橋渡しする
+- キーボード入力を USB 側へ実用的に橋渡しする
+- consumer / ポインティング入力は存在する場合に橋渡しできるようにする
 
 ## Scope
 
@@ -24,8 +25,9 @@
 ## MVP Baseline
 
 - Windows では `Keyboard + Mouse` の複合 USB HID デバイスとして提示する
-- `Keyboard`、`Consumer Control`、`Mouse / Pointer` の 3 論理機能を扱う
-- キーボード report は `HKRO 6-key`、Consumer Control は `basic`、Pointer は `相対移動 + ボタン 1-5 + 縦横スクロール` を前提にする
+- USB descriptor の第一案は `Keyboard`、`Consumer Control`、`Mouse / Pointer` の 3 論理機能を含める
+- MVP の接続成立条件として必須なのは `Keyboard` のみとし、`Consumer Control` と `Mouse / Pointer` は optional capability とする
+- キーボード report は `HKRO 6-key`、Consumer Control は `basic`、Pointer は `相対移動 + ボタン 1-5 + 縦横スクロール` を第一案とする
 - キーボード側で生成されたマウス系イベントは追加解釈せず、そのまま橋渡しする
 - bond erase 後に再ペアリングへ戻っても、USB 側の提示形態は変えない
 - boot protocol は MVP では必須にせず、将来追加の余地だけ残す
@@ -62,7 +64,7 @@
 - BLE HOG から受ける notification payload は、`report reference` で識別された各 report の `body` 部分とみなす
 - bridge 内部では `handle -> {report id, report type, logical role}` の table を持ち、payload 単体から role を復元する
 - USB 送信用の内部表現では `report_id` を付け直した report struct へ再構成する
-- MVP の logical role は `keyboard`、`consumer`、`mouse_input` の 3 種を必須とする
+- MVP の logical role では `keyboard` を必須とし、`consumer` と `mouse_input` は optional capability とする
 - `mouse_feature` と `led_output` は bridge の primary input path には含めない
 
 ### Keyboard
@@ -161,8 +163,8 @@
 - 切断時に stuck key / stuck button を防げるか
 - Consumer Control の stuck を防げるか
 - `HKRO` keyboard report が Windows で期待通り動作するか
-- ボタン 1-5 と縦横スクロールが期待通り動作するか
-- ポインティング入力の遅延や欠落が実用範囲か
+- `consumer` や `pointer` を有効化した場合に、ボタン 1-5 と縦横スクロールが期待通り動作するか
+- `pointer` を有効化した場合に、入力遅延や欠落が実用範囲か
 - report ID 方式で Windows 側の相性問題が出ないか
 - `single HID interface + report IDs` が Zephyr 実装で破綻しないか
 

@@ -26,7 +26,7 @@ Accepted for MVP
 - known-device reconnect は passive scan とし、local name や scan response に依存しない
 - scan は `接続試行中だけ停止し、失敗または切断後にすぐ再開する` 方針とし、connect attempt に backoff をかける
 - 厳密な ZMK 機種判別は MVP では必須にしない
-- `LaLapadGen2` 前提の MVP では、post-connect validation の一部として期待 report reference を確認してよい
+- `LaLapadGen2` 前提の MVP では、post-connect validation の一部として `Keyboard=1` を必須確認し、`Consumer=2` と `Mouse=3` は optional capability として確認してよい
 
 ## Options Considered
 
