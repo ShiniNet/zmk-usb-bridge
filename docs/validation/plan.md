@@ -62,6 +62,18 @@
 - RGB LED とボタン操作の整合
 - bond erase 後の自動 `pairing_scan` 復帰
 
+### Build / Distribution スパイク
+
+- `WSL2` 上の build が日常開発経路として安定するか
+- `Windows` 側 `flash/monitor` を併用したときの手順が過度に複雑にならないか
+- `sdkconfig.defaults` 多段構成で `project`、`board`、`user`、`CI` の責務分離が保てるか
+- `config/user.defaults` の編集だけで allowlist 変更が完結するか
+- 利用者 fork 上の GitHub Actions だけで build artifact を取得できるか
+- artifact 内容だけで利用者が自力で書き込み可能か
+- `merged.bin` 主導線と分割 firmware 補助導線の二本立てが有効か
+- `開発専用 USB CDC` による bring-up が成立するか
+- USB HID 安定化フェーズで `UART` へ寄せる価値が十分あるか
+
 ## Per-Validation Template
 
 ### Hypothesis
@@ -97,6 +109,7 @@
 2. USB 最小 descriptor の成立性
 3. 切断時の stuck key / stuck button 防止
 4. 最小 UI での復旧性
+5. Build / Distribution 導線の成立性
 
 ## BLE Spike Decision Outputs
 
@@ -109,6 +122,15 @@
 - bond 不整合を recovery へ送る条件
 - NimBLE callback と BLE manager queue の責務分離で実装複雑度を抑えられるか
 - `LaLapadGen2` の HOG report discovery 前提が bridge 実装と矛盾しないか
+
+## Build / Distribution Decision Outputs
+
+- `WSL2 build + Windows flash/monitor` を標準開発導線として採用してよいか
+- user config を repository 追跡ファイルで持つ方針が利用者体験と整合するか
+- fork 上 GitHub Actions artifact 配布が MVP の標準導線として十分か
+- `merged.bin` 主導線と分割 firmware 補助導線の二本立てで追加の見直しが必要か
+- `開発専用 USB CDC` を当面許容しつつ、安定化フェーズで `UART` を再評価する方針に修正が必要か
+- `release profile` と `dev profile` の責務分離で見直しが必要か
 
 ## Initial Baseline
 

@@ -24,11 +24,9 @@
 ## MVP Baseline
 
 - Windows では `Keyboard + Mouse` の複合 USB HID デバイスとして提示する
-- キーボード report は `HKRO` を採用し、MVP では `6 キー系` の標準的な keyboard report として提示する
-- キーボード入力は、標準的な ZMK キーボード利用で期待される入力を USB 側へ橋渡しする
-- Consumer Control は `basic` 相当を採用し、標準的なメディアキー入力を落とさない
-- ポインティング入力は `相対移動`、`ボタン 1-5`、`縦スクロール`、`横スクロール` を含める
-- ジェスチャそのものは扱わず、キーボード側で生成されたマウス系イベントをそのまま橋渡しする
+- `Keyboard`、`Consumer Control`、`Mouse / Pointer` の 3 論理機能を扱う
+- キーボード report は `HKRO 6-key`、Consumer Control は `basic`、Pointer は `相対移動 + ボタン 1-5 + 縦横スクロール` を前提にする
+- キーボード側で生成されたマウス系イベントは追加解釈せず、そのまま橋渡しする
 - bond erase 後に再ペアリングへ戻っても、USB 側の提示形態は変えない
 - boot protocol は MVP では必須にせず、将来追加の余地だけ残す
 
@@ -69,10 +67,8 @@
 
 - BLE 側で受けたキーボード入力を、標準的な USB HID keyboard report に変換する
 - 変換方針は `ZMK キーボードとして通常期待されるキー入力を崩さない` ことを優先する
-- 具体的な report format は、可能な限り既存 ZMK の `HKRO` keyboard report 構成に一致させる
-- MVP では `8 modifier bits + reserved + 6 key array` の標準的な HKRO 入力 report を第一案とする
-- MVP では `6 キー系` を前提にし、6 キー超の通常キー同時押し最適化は優先しない
-- boot protocol は MVP では有効化しないが、将来追加余地を意識して keyboard report を過度に特殊化しない
+- report format は、可能な限り既存 ZMK の `HKRO` keyboard report 構成に一致させる
+- MVP の第一案は `8 modifier bits + reserved + 6 key array`
 - host LED output や追加 feature report は MVP の必須対象にしない
 
 ### Consumer Control
@@ -164,25 +160,10 @@
 
 ### 決定済み
 
-- キーボード入力とポインティング入力の両方が初期スコープ
-- キーボード report は `HKRO`
-- Consumer Control は `basic` usage 範囲を第一案とする
-- Windows 優先で `Keyboard + Mouse` 複合 HID として提示する
-- 内部構成の第一案は `single HID interface + report IDs`
-- report ID は `Keyboard=1`、`Consumer=2`、`Mouse=3` を第一案とする
-- ポインティング入力は `相対移動 + ボタン 1-5 + 縦横スクロール` を含む
-- bond erase 後も USB 側は同じ descriptor を維持する
-- boot protocol は MVP 非対応だが、将来追加の余地を残す
-- `Keyboard` と `Consumer Control` は順序重視で送る
-- `Mouse movement / wheel` は未送信分を集約してよい
-- `Mouse buttons` は順序を潰さずに送る
-- 切断時と bond erase 時の `all release` は通常送信より優先する
-- `all release` は最優先フラグ方式で扱う
-- `Mouse movement / wheel` は固定タイマーなしで、次の送信可能タイミングで flush する
-- `HKRO` keyboard report は既存 ZMK の標準構成に可能な限り一致させる
-- movement / wheel は飽和加算とし、wraparound させない
-- `release_pending` 中は通常 input report の送出を再開しない
-- USB 状態に応じた専用 RGB 表示は MVP では増やさない
+- report 構成の正本は `Presentation Model` と `Report Mapping`
+- 送信順序と集約の正本は `Transmission Policy`
+- 異常時 safe state の正本は `Disconnect / Recovery Behavior`
+- 追加の USB 専用 UI は MVP では増やさない
 
 ### 未決定
 
@@ -194,8 +175,7 @@
 - BLE 切断時の全 release 手順
 - USB 側 enumeration 失敗時の扱い
 - レポート欠落や重複送出の抑止
-- BLE 切断や bond erase 時には keyboard と consumer と pointer のすべてを即座に release する
-- 再接続待機中にホストへ不正な入力を出し続けない
+- BLE 切断や bond erase 時の safe state 遷移は `Disconnect / Recovery Behavior` を正本とする
 - movement / wheel 集約によって pointer の体感遅延が増えすぎないこと
 
 ## Constraints

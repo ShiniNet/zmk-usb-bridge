@@ -88,6 +88,7 @@ BLE stack の暫定第一案は `ESP-IDF NimBLE host + ESP controller` とする
 - `BLE stack 管理 bond` とアプリ補助メタデータの境界を実装でどう分離するか
 - 1 ボタン + RGB LED の UI をどこまで単純化するか
 - ESP32-S3 を本採用するか、代替 MCU と比較するか
+- `release profile` と `dev profile` の境界を build 設計でどう分けるか
 
 ## 詳細設計の置き場
 
@@ -96,4 +97,5 @@ BLE stack の暫定第一案は `ESP-IDF NimBLE host + ESP controller` とする
 - Recovery UI: `docs/subsystems/recovery-ui.md`
 - 状態遷移: `docs/cross-cutting/state-machine.md`
 - 永続化: `docs/cross-cutting/persistence.md`
+- Build / Distribution: `docs/foundation/build-and-distribution.md`
 - 検証計画: `docs/validation/plan.md`

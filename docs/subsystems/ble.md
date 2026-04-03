@@ -47,15 +47,8 @@
 
 ### 決定済み
 
-- 無改造キーボード対応が必須
-- 1:1 利用を基本とする
-- 初回は `LaLapadGen2` を前提に設計する
-- bond が無い起動では自動ペアリング探索に入る
-- bond 済み個体とは再接続で区別できる
-- pairing window 中は最初に成立した相手を採用する運用とする
-- unbonded pairing scan の最低 filter は `connectable + HID service`
-- bonded reconnect では bond / identity を主キーとし、local name は補助情報に留める
-- scan duty を細かく切るより、connect attempt 間隔を backoff する方針を採る
+- 初回 pairing、既知 peer reconnect、privacy、metadata の原則は本書の各専用節を正本とする
+- 特に識別の正本は `bond / identity`、allowlist は `初回 pairing の補助条件`、再接続は `scan 継続 + connect attempt backoff` を基本とする
 
 ### 未決定
 
@@ -187,8 +180,7 @@
 - advertisement または scan response に `HID service` が見えることを最低条件にする
 - advertisement の `Appearance` が keyboard 系であることを追加条件の第一候補とする
 - local name はあればログや補助判断に使ってよいが、MVP では必須条件にしない
-- optional config として `name allowlist` を持てるようにし、設定されている場合だけ `local name` 一致を補助条件に加えてよい
-- 初期実装では `CONFIG_ZMK_USB_BRIDGE_PAIRING_NAME_ALLOWLIST_ENABLED` と `CONFIG_ZMK_USB_BRIDGE_PAIRING_NAME_ALLOWLIST` を想定する
+- `name allowlist` は optional config とし、設定されている場合だけ `local name` 一致を補助条件に加えてよい
 - 利用者には対象キーボードだけを pairing mode にしてもらう
 
 ### Bonded Reconnect Scan
@@ -205,9 +197,7 @@
 
 - ドングルに bond が無い場合は自動でペアリング探索を開始する
 - 利用者には対象キーボードだけをペアリングモードにしてもらう
-- ドングルは MVP では厳密な機種判別よりも、`connectable + HID service + keyboard appearance` と `想定対象だけが pairing mode に入っている` 運用前提を採る
-- `name allowlist` が設定されている場合だけ、advertisement / scan response の local name 一致を追加条件にしてよい
-- 初期実装では allowlist の形式を `comma-separated exact match` とする
+- 候補判定条件は `Scan Policy` の `Unbonded Pairing Scan` を正本とする
 - 最初に接続成立したキーボードを即採用せず、post-connect validation を通過した相手だけを採用する
 - post-connect validation では、少なくとも `HIDS service 存在`、`必要 input report 発見`、`必要 report reference の整合` を確認する
 - `LaLapadGen2` 前提の MVP では `Keyboard=1`、`Consumer=2`、`Mouse=3` の report reference 条件を採用条件にしてよい
@@ -215,7 +205,7 @@
 
 ### 既知デバイス再接続
 
-- 既知デバイスの識別は bond 情報を主キーとして扱う
+- 既知デバイスの識別原則は `bond 情報を主キーとして扱う`
 - reconnect 可否の最終判断は `BLE stack が保持する bond` と、それに紐づく identity 解決結果を基準にする
 - 同名の別個体は bond 不一致として区別する
 - bond が一致しないデバイスには自動再接続しない
@@ -230,7 +220,6 @@
 - `peer address snapshot` は診断と次回初回 attempt のヒントに留め、bond 不一致を覆す根拠にはしない
 - local name、RSSI、advertisement 上の service 列挙結果は補助メタデータに含めない
 - 補助メタデータ欠損や破損だけでは再ペアリングへ倒さず、bond が有効なら bond 主体で再接続を継続する
-- local name の allowlist は `初回 pairing の補助条件` にのみ使い、bond 後の既知 peer 識別には使わない
 
 ### Privacy / Directed Advertisement Policy
 
@@ -271,7 +260,7 @@
 - 接続断時は USB 側へ release 処理を要求して stuck input を防ぐ
 - 同一名デバイス発見だけでは接続を許可しない
 - 補助メタデータ不一致はログや診断には使えても、bond 一致を覆さない
-- 既知デバイスが一度見えなくなり、後で再び広告を出した場合は backoff の待ちを持ち越さず `fast reconnect` に戻す
+- 既知デバイスが一度見えなくなり、後で再び広告を出した場合は `Reconnection Strategy` に従って `fast reconnect` へ戻す
 
 ## Constraints
 
