@@ -8,8 +8,13 @@
 LOG_MODULE_REGISTER(zub_ui, LOG_LEVEL_INF);
 
 #define ZMK_USB_BRIDGE_LED_RED_NODE DT_ALIAS(led0)
-#define ZMK_USB_BRIDGE_LED_BLUE_NODE DT_ALIAS(led1)
-#define ZMK_USB_BRIDGE_LED_GREEN_NODE DT_ALIAS(led2)
+/*
+ * On the Seeed XIAO BLE hardware revision used for bring-up, the physical
+ * blue/green outputs appear swapped relative to the board DTS labels.
+ * Map the user-facing UI colors to the observed physical LEDs.
+ */
+#define ZMK_USB_BRIDGE_LED_BLUE_NODE DT_ALIAS(led2)
+#define ZMK_USB_BRIDGE_LED_GREEN_NODE DT_ALIAS(led1)
 
 typedef struct {
     bool red;
