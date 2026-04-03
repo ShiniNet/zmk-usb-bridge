@@ -6,6 +6,8 @@
 #include "zmk_usb_bridge/pairing_filter.h"
 #include "zmk_usb_bridge/ble_runtime.h"
 
+#include <limits.h>
+#include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/gap.h>
 #include <zephyr/bluetooth/uuid.h>
@@ -20,6 +22,7 @@ LOG_MODULE_REGISTER(zub_ble_scan, LOG_LEVEL_INF);
 enum {
     ZMK_USB_BRIDGE_SCAN_CACHE_SIZE = 8,
     ZMK_USB_BRIDGE_SCAN_NAME_MAX = 32,
+    ZMK_USB_BRIDGE_SCAN_CANDIDATE_STALE_MS = 3000,
 };
 
 typedef struct {
@@ -30,6 +33,7 @@ typedef struct {
     bool has_hid_service;
     bool has_keyboard_appearance;
     bool has_local_name;
+    int64_t last_seen_ms;
     char local_name[ZMK_USB_BRIDGE_SCAN_NAME_MAX + 1];
 } zmk_usb_bridge_scan_candidate_state_t;
 
@@ -56,31 +60,70 @@ static void add_bond_to_accept_list(const struct bt_bond_info *info, void *user_
     *err = bt_le_filter_accept_list_add(&info->addr);
 }
 
+static void initialize_candidate_slot(
+    zmk_usb_bridge_scan_candidate_state_t *slot,
+    const bt_addr_le_t *addr,
+    int64_t now_ms
+) {
+    slot->in_use = true;
+    bt_addr_le_copy(&slot->addr, addr);
+    slot->reported = false;
+    slot->connectable = false;
+    slot->has_hid_service = false;
+    slot->has_keyboard_appearance = false;
+    slot->has_local_name = false;
+    slot->last_seen_ms = now_ms;
+    memset(slot->local_name, 0, sizeof(slot->local_name));
+}
+
 static zmk_usb_bridge_scan_candidate_state_t *find_candidate_slot(const bt_addr_le_t *addr) {
+    const int64_t now_ms = k_uptime_get();
     zmk_usb_bridge_scan_candidate_state_t *free_slot = NULL;
+    zmk_usb_bridge_scan_candidate_state_t *stale_slot = NULL;
+    zmk_usb_bridge_scan_candidate_state_t *oldest_slot = NULL;
+    int64_t oldest_seen_ms = INT64_MAX;
 
     for (size_t i = 0; i < ARRAY_SIZE(g_candidate_cache); i++) {
         if (g_candidate_cache[i].in_use && bt_addr_le_eq(&g_candidate_cache[i].addr, addr)) {
+            g_candidate_cache[i].last_seen_ms = now_ms;
             return &g_candidate_cache[i];
         }
 
         if (!g_candidate_cache[i].in_use && free_slot == NULL) {
             free_slot = &g_candidate_cache[i];
+            continue;
+        }
+
+        if (g_candidate_cache[i].in_use &&
+            (now_ms - g_candidate_cache[i].last_seen_ms) >= ZMK_USB_BRIDGE_SCAN_CANDIDATE_STALE_MS &&
+            stale_slot == NULL) {
+            stale_slot = &g_candidate_cache[i];
+        }
+
+        if (g_candidate_cache[i].in_use && g_candidate_cache[i].last_seen_ms < oldest_seen_ms) {
+            oldest_seen_ms = g_candidate_cache[i].last_seen_ms;
+            oldest_slot = &g_candidate_cache[i];
         }
     }
 
     if (free_slot != NULL) {
-        free_slot->in_use = true;
-        bt_addr_le_copy(&free_slot->addr, addr);
-        free_slot->reported = false;
-        free_slot->connectable = false;
-        free_slot->has_hid_service = false;
-        free_slot->has_keyboard_appearance = false;
-        free_slot->has_local_name = false;
-        memset(free_slot->local_name, 0, sizeof(free_slot->local_name));
+        initialize_candidate_slot(free_slot, addr, now_ms);
+        return free_slot;
     }
 
-    return free_slot;
+    if (stale_slot != NULL) {
+        LOG_INF("recycling stale scan candidate slot");
+        initialize_candidate_slot(stale_slot, addr, now_ms);
+        return stale_slot;
+    }
+
+    if (oldest_slot != NULL) {
+        LOG_INF("recycling oldest scan candidate slot");
+        initialize_candidate_slot(oldest_slot, addr, now_ms);
+        return oldest_slot;
+    }
+
+    return NULL;
 }
 
 static bool parse_ad_element(struct bt_data *data, void *user_data) {
@@ -136,6 +179,18 @@ static void maybe_log_pairing_candidate(zmk_usb_bridge_scan_candidate_state_t *c
         .has_keyboard_appearance = candidate->has_keyboard_appearance,
         .local_name = candidate->has_local_name ? candidate->local_name : NULL,
     };
+
+    if (!candidate->connectable || !candidate->has_hid_service || !candidate->has_keyboard_appearance) {
+        return;
+    }
+
+    if (!zmk_usb_bridge_pairing_filter_name_allowed(pairing_candidate.local_name)) {
+        LOG_INF(
+            "pairing candidate rejected by allowlist name=%s",
+            candidate->has_local_name ? candidate->local_name : "<none>"
+        );
+        return;
+    }
 
     if (!zmk_usb_bridge_pairing_filter_accept_unbonded_candidate(&pairing_candidate)) {
         return;

@@ -16,6 +16,23 @@ static char g_allowlist_storage[ZMK_USB_BRIDGE_ALLOWLIST_RAW_MAX];
 static const char *g_allowlist_entries[ZMK_USB_BRIDGE_ALLOWLIST_MAX_ENTRIES];
 static size_t g_allowlist_count;
 
+static bool equals_case_insensitive(const char *left, const char *right) {
+    if (left == NULL || right == NULL) {
+        return false;
+    }
+
+    while (*left != '\0' && *right != '\0') {
+        if (tolower((unsigned char)*left) != tolower((unsigned char)*right)) {
+            return false;
+        }
+
+        left++;
+        right++;
+    }
+
+    return *left == '\0' && *right == '\0';
+}
+
 static char *trim_in_place(char *text) {
     if (text == NULL) {
         return NULL;
@@ -99,7 +116,7 @@ bool zmk_usb_bridge_pairing_filter_name_allowed(const char *local_name) {
     }
 
     for (size_t index = 0; index < g_allowlist_count; index++) {
-        if (strcmp(local_name, g_allowlist_entries[index]) == 0) {
+        if (equals_case_insensitive(local_name, g_allowlist_entries[index])) {
             return true;
         }
     }
