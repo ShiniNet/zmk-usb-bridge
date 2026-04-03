@@ -468,11 +468,41 @@ static uint8_t on_report_characteristic_discovered(
 
     {
         const struct bt_gatt_chrc *chrc = attr->user_data;
-        zmk_usb_bridge_hog_report_slot_t *slot = &g_ctx.reports[g_ctx.report_count];
+        zmk_usb_bridge_hog_report_slot_t *slot;
+        char uuid_str[BT_UUID_STR_LEN];
+        const bool last_characteristic_in_service = chrc->value_handle >= g_ctx.service_end_handle;
+
+        bt_uuid_to_str(chrc->uuid, uuid_str, sizeof(uuid_str));
+
+        LOG_INF(
+            "hids chrc handle=0x%04x value_handle=0x%04x props=0x%02x uuid=%s",
+            attr->handle,
+            chrc->value_handle,
+            chrc->properties,
+            uuid_str
+        );
 
         if (g_ctx.report_count > 0U) {
             g_ctx.reports[g_ctx.report_count - 1U].end_handle = attr->handle - 1U;
         }
+
+        if (bt_uuid_cmp(chrc->uuid, BT_UUID_HIDS_REPORT) != 0) {
+            if (last_characteristic_in_service && g_ctx.report_count > 0U) {
+                g_ctx.current_report_index = 0U;
+                if (start_descriptor_discovery(0U) != ZMK_USB_BRIDGE_STATUS_OK) {
+                    (void)zmk_usb_bridge_hog_client_fail_discovery(
+                        g_ctx.conn_handle,
+                        ZMK_USB_BRIDGE_EVENT_REASON_HID_REPORT_MISSING,
+                        ZMK_USB_BRIDGE_STATUS_INVALID_STATE
+                    );
+                }
+                return BT_GATT_ITER_STOP;
+            }
+
+            return BT_GATT_ITER_CONTINUE;
+        }
+
+        slot = &g_ctx.reports[g_ctx.report_count];
 
         memset(slot, 0, sizeof(*slot));
         slot->in_use = true;
@@ -488,6 +518,18 @@ static uint8_t on_report_characteristic_discovered(
             slot->end_handle
         );
         g_ctx.report_count++;
+
+        if (last_characteristic_in_service) {
+            g_ctx.current_report_index = 0U;
+            if (start_descriptor_discovery(0U) != ZMK_USB_BRIDGE_STATUS_OK) {
+                (void)zmk_usb_bridge_hog_client_fail_discovery(
+                    g_ctx.conn_handle,
+                    ZMK_USB_BRIDGE_EVENT_REASON_HID_REPORT_MISSING,
+                    ZMK_USB_BRIDGE_STATUS_INVALID_STATE
+                );
+            }
+            return BT_GATT_ITER_STOP;
+        }
     }
 
     return BT_GATT_ITER_CONTINUE;
@@ -558,7 +600,7 @@ static zmk_usb_bridge_status_t start_report_discovery(void) {
     int err;
 
     memset(&g_ctx.report_discover_params, 0, sizeof(g_ctx.report_discover_params));
-    g_ctx.report_discover_params.uuid = BT_UUID_HIDS_REPORT;
+    g_ctx.report_discover_params.uuid = NULL;
     g_ctx.report_discover_params.start_handle = g_ctx.service_start_handle + 1U;
     g_ctx.report_discover_params.end_handle = g_ctx.service_end_handle;
     g_ctx.report_discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;

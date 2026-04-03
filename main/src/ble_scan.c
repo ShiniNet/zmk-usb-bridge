@@ -341,6 +341,10 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_start_known_device(void) {
     struct bt_le_scan_param param = *BT_LE_SCAN_PASSIVE;
     int err;
 
+    if (g_scan_active && !g_pairing_mode) {
+        return ZMK_USB_BRIDGE_STATUS_OK;
+    }
+
     err = bt_le_filter_accept_list_clear();
     if (err != 0) {
         LOG_ERR("accept list clear failed err=%d", err);
