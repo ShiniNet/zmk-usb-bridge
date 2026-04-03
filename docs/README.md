@@ -42,7 +42,7 @@ BLE、USB、Recovery UI など、機能単位の詳細設計を置く。
 - `adr/0003-usb-hid-minimum-descriptor.md`
 - `adr/0004-ble-stack-baseline.md`
 - `adr/0005-build-and-distribution-workflow.md`
-- `adr/0006-esp-idf-version-pin.md`
+- `adr/0006-zephyr-upstream-and-version-pin.md`
 - `adr/0007-artifact-and-debug-console-policy.md`
 
 ## 運用ルール

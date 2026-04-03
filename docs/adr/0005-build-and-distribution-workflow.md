@@ -2,29 +2,30 @@
 
 ## Status
 
-Accepted for prototyping
+Accepted
 
 ## Context
 
 - 試作速度を優先しつつ、利用者ごとの self-build 導線も必要
-- 開発ホストは `WSL2`、実機は `Seeed XIAO ESP32-S3`
+- 開発ホストは `Zephyr upstream` application 前提に切り替える
+- 実機は `Seeed XIAO nRF52840`
 - 利用者ごとに `pairing name allowlist` を編集できるようにしたい
 - 中央 repository から恒久 firmware release を配る前提にはしたくない
 
 ## Decision
 
-- build の主経路は `WSL2` 上の `ESP-IDF`
-- `flash` と `monitor` は必要なら `Windows` 側実行を許容する
+- build の主経路は `west build`
 - 配布の主経路は `fork した各自の repository で GitHub Actions を実行し、workflow artifact を取得して自分で書き込む` 方式とする
 - 利用者設定の正本は repository 追跡下の `user config fragment` とする
-- build は `sdkconfig.defaults` 多段構成を前提にする
+- build は `prj.conf` と board/user/ci の差分ファイルで構成する
+- `Seeed XIAO nRF52840` 向けの主 artifact は `zephyr.uf2` とする
 - allowlist は user config から設定可能にし、`初回 pairing の補助条件` にのみ使う
 
 ## Consequences
 
-- `WSL2` build と `Windows` 側 `flash/monitor` を分けることで試作を止めにくい
+- `west build` と Zephyr 標準の設定モデルに寄せることで、再現性を保ちやすい
 - fork 上 self-build を標準導線にすることで、利用者ごとの allowlist 差分を中央配布なしで吸収しやすい
-- workflow input や `sdkconfig` 生成物を正本にしないため、再現性と履歴性を保ちやすい
+- `UF2` 主導線により、`XIAO nRF52840` の書き込み手順を短く保ちやすい
 - 利用者には `fork` と Actions artifact の最低限の説明が必要になる
 
 ## Follow-up

@@ -3,45 +3,53 @@
 #include "zmk_usb_bridge/bridge.h"
 #include "zmk_usb_bridge/recovery_ui.h"
 
-#include <esp_log.h>
 #include <stdbool.h>
+#include <zephyr/logging/log.h>
 
-static const char *TAG = "zub_sm";
+LOG_MODULE_REGISTER(zub_sm, LOG_LEVEL_INF);
+
 static zmk_usb_bridge_state_t g_state = ZMK_USB_BRIDGE_STATE_BOOT;
 static bool g_usb_ready;
 static bool g_ble_synced;
 static bool g_persist_ready;
 static bool g_has_bond;
 
-static esp_err_t set_state(zmk_usb_bridge_state_t next_state) {
+static zmk_usb_bridge_status_t set_state(zmk_usb_bridge_state_t next_state) {
     g_state = next_state;
-    ESP_LOGI(TAG, "state=%d", next_state);
+    LOG_INF("state=%d", next_state);
     return zmk_usb_bridge_recovery_ui_set_state(next_state);
 }
 
-static esp_err_t advance_startup_gate(void) {
+static zmk_usb_bridge_status_t advance_startup_gate(void) {
     if (!g_usb_ready) {
-        return ESP_OK;
+        return ZMK_USB_BRIDGE_STATUS_OK;
     }
 
     if (g_state == ZMK_USB_BRIDGE_STATE_BOOT) {
-        ESP_ERROR_CHECK(set_state(ZMK_USB_BRIDGE_STATE_USB_READY));
+        zmk_usb_bridge_status_t status = set_state(ZMK_USB_BRIDGE_STATE_USB_READY);
+        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+            return status;
+        }
     }
 
     if (!g_ble_synced || !g_persist_ready) {
-        return ESP_OK;
+        return ZMK_USB_BRIDGE_STATUS_OK;
     }
 
     if (g_state != ZMK_USB_BRIDGE_STATE_USB_READY) {
-        return ESP_OK;
+        return ZMK_USB_BRIDGE_STATUS_OK;
     }
 
     return set_state(g_has_bond ? ZMK_USB_BRIDGE_STATE_SCANNING_KNOWN_DEVICE
                                 : ZMK_USB_BRIDGE_STATE_PAIRING_SCAN);
 }
 
-esp_err_t zmk_usb_bridge_state_machine_init(void) {
-    ESP_ERROR_CHECK(zmk_usb_bridge_bridge_init());
+zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_init(void) {
+    zmk_usb_bridge_status_t status = zmk_usb_bridge_bridge_init();
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        return status;
+    }
+
     g_usb_ready = false;
     g_ble_synced = false;
     g_persist_ready = false;
@@ -49,16 +57,17 @@ esp_err_t zmk_usb_bridge_state_machine_init(void) {
     return set_state(ZMK_USB_BRIDGE_STATE_BOOT);
 }
 
-esp_err_t zmk_usb_bridge_state_machine_start(void) {
+zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_start(void) {
     const zmk_usb_bridge_event_t event = {
         .type = ZMK_USB_BRIDGE_EVENT_USB_READY,
     };
+
     return zmk_usb_bridge_state_machine_handle_event(&event);
 }
 
-esp_err_t zmk_usb_bridge_state_machine_handle_event(const zmk_usb_bridge_event_t *event) {
+zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_handle_event(const zmk_usb_bridge_event_t *event) {
     if (event == NULL) {
-        return ESP_ERR_INVALID_ARG;
+        return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
     }
 
     switch (event->type) {
@@ -86,35 +95,52 @@ esp_err_t zmk_usb_bridge_state_machine_handle_event(const zmk_usb_bridge_event_t
                                     : ZMK_USB_BRIDGE_STATE_PAIRING_SCAN);
     case ZMK_USB_BRIDGE_EVENT_HID_READY:
         return set_state(ZMK_USB_BRIDGE_STATE_CONNECTED);
-    case ZMK_USB_BRIDGE_EVENT_DISCONNECTED:
-        ESP_ERROR_CHECK(zmk_usb_bridge_bridge_release_all());
+    case ZMK_USB_BRIDGE_EVENT_DISCONNECTED: {
+        zmk_usb_bridge_status_t status = zmk_usb_bridge_bridge_release_all();
+        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+            return status;
+        }
         return set_state(g_has_bond ? ZMK_USB_BRIDGE_STATE_RECONNECTING_FAST
                                     : ZMK_USB_BRIDGE_STATE_PAIRING_SCAN);
-    case ZMK_USB_BRIDGE_EVENT_HOST_RESET:
+    }
+    case ZMK_USB_BRIDGE_EVENT_HOST_RESET: {
+        zmk_usb_bridge_status_t status;
         g_ble_synced = false;
-        ESP_ERROR_CHECK(zmk_usb_bridge_bridge_release_all());
+        status = zmk_usb_bridge_bridge_release_all();
+        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+            return status;
+        }
         return set_state(ZMK_USB_BRIDGE_STATE_USB_READY);
-    case ZMK_USB_BRIDGE_EVENT_BOND_MISMATCH:
-        ESP_ERROR_CHECK(zmk_usb_bridge_bridge_release_all());
+    }
+    case ZMK_USB_BRIDGE_EVENT_BOND_MISMATCH: {
+        zmk_usb_bridge_status_t status = zmk_usb_bridge_bridge_release_all();
+        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+            return status;
+        }
         return set_state(ZMK_USB_BRIDGE_STATE_RECOVERY_REQUIRED);
+    }
     case ZMK_USB_BRIDGE_EVENT_METADATA_FAULT:
         return set_state(g_has_bond ? ZMK_USB_BRIDGE_STATE_SCANNING_KNOWN_DEVICE
                                     : ZMK_USB_BRIDGE_STATE_PAIRING_SCAN);
     case ZMK_USB_BRIDGE_EVENT_BUTTON_SHORT_PRESS:
         if (g_state == ZMK_USB_BRIDGE_STATE_RECOVERY_REQUIRED) {
-            return ESP_OK;
+            return ZMK_USB_BRIDGE_STATUS_OK;
         }
         return set_state(g_has_bond ? ZMK_USB_BRIDGE_STATE_RECONNECTING_FAST
                                     : ZMK_USB_BRIDGE_STATE_PAIRING_SCAN);
-    case ZMK_USB_BRIDGE_EVENT_BUTTON_LONG_PRESS:
-        ESP_ERROR_CHECK(zmk_usb_bridge_bridge_release_all());
+    case ZMK_USB_BRIDGE_EVENT_BUTTON_LONG_PRESS: {
+        zmk_usb_bridge_status_t status = zmk_usb_bridge_bridge_release_all();
+        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+            return status;
+        }
         return set_state(ZMK_USB_BRIDGE_STATE_BOND_ERASING);
+    }
     case ZMK_USB_BRIDGE_EVENT_BOND_ERASE_COMPLETE:
         g_has_bond = false;
         g_persist_ready = true;
         return set_state(ZMK_USB_BRIDGE_STATE_PAIRING_SCAN);
     default:
-        return ESP_OK;
+        return ZMK_USB_BRIDGE_STATUS_OK;
     }
 }
 

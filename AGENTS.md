@@ -42,4 +42,4 @@ Keep `README.md` end-user facing. Put design detail in `docs/`.
 - USB HID descriptor details
 - Device identification strategy on the BLE side
 - Recovery UI details
-- Final MCU/platform choice
+- Exact Zephyr USB / BLE implementation details

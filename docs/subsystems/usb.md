@@ -29,12 +29,7 @@
 - キーボード側で生成されたマウス系イベントは追加解釈せず、そのまま橋渡しする
 - bond erase 後に再ペアリングへ戻っても、USB 側の提示形態は変えない
 - boot protocol は MVP では必須にせず、将来追加の余地だけ残す
-
-## External Interfaces
-
-- PC ホストの USB HID stack
-- BLE 入力受信層
-- 状態遷移管理
+- 実装の第一案は `Zephyr USB device stack` 上で行う
 
 ## Presentation Model
 
@@ -43,7 +38,6 @@
 - 少なくとも `Keyboard`、`Consumer Control`、`Mouse / Pointer` の論理機能を持つ
 - Windows 優先のため、OS 標準の扱いに寄せた構成を採る
 - BIOS / UEFI 向けの boot protocol 最適化は MVP の必須条件にしない
-- ただし将来の boot protocol 追加を極端に難しくする構成は避ける
 
 ## Report ID Layout
 
@@ -85,30 +79,6 @@
 - キーボード側でジェスチャがこれらのイベントへ変換されている前提で、ドングル側では追加解釈をしない
 - 既存 ZMK の mouse report 構成に可能な限り寄せる
 
-### LaLapadGen2 Bridge Baseline
-
-- `Keyboard input = report id 1` を `zmk_hid_keyboard_report_body` 相当として受ける
-- `Consumer input = report id 2` を `zmk_hid_consumer_report_body` 相当として受ける
-- `Mouse input = report id 3` を `zmk_hid_mouse_report_body` 相当として受ける
-- `Mouse input` の body は `buttons + d_x + d_y + d_scroll_y + d_scroll_x` の順を前提にする
-- local config に HID override が無い限り、keyboard は `8 modifiers + reserved + 6 keys`、consumer は `basic usages x 6` の前提で bridge する
-- `Mouse feature = report id 3 / feature` は smooth scrolling の解像度倍率用であり、MVP では USB report 変換対象にしない
-
-### Internal State Model
-
-- keyboard は `latest full-state report` として保持し、USB 送信時はそのまま再構成する
-- consumer も `latest full-state report` として保持する
-- mouse は `buttons state` と `movement/scroll delta accumulator` を分けて保持する
-- BLE 側から mouse full-state body を受けても、USB 送信ポリシー上は `buttons` と `delta` の性質を分けて扱ってよい
-- disconnect / bond erase / recovery 移行時は keyboard、consumer、mouse state をすべて safe state に戻す
-
-### Translation Boundary
-
-- BLE notification handler は report body の妥当性確認と internal state 更新だけを行う
-- USB serializer は internal state から `report_id` 付き USB report を組み立てる
-- report body の長さが期待値と一致しない場合は、その report を破棄して診断ログを残す
-- unknown report id / report type / handle は USB 側へ流さず、bridge の状態を壊さない
-
 ## Transmission Policy
 
 ### Ordering Policy
@@ -121,7 +91,6 @@
 ### Concurrency / Serialization
 
 - USB IN endpoint への送信自体は 1 本ずつ直列化する
-- ただし report 生成段階では、keyboard 系と pointer 系で性質の違う扱いを許容する
 - `Keyboard` と `Consumer Control` は最新上書きではなく、状態遷移を壊さないことを優先する
 - `Mouse movement / wheel` は高頻度更新をそのまま全部送らず、次送信までに集約してよい
 - `Mouse buttons` は movement 集約に巻き込まず、明示的な状態変化として扱う
@@ -140,21 +109,14 @@
 - その後に `mouse button release all` と `zero movement / zero scroll` を送る
 - bond erase 時も同様に USB 側を安全状態へ戻してから再ペアリングへ進む
 - 再接続待機中に新しい入力を送らない
-- `all release` 実行時は未送信の通常 report を安全側に倒して破棄または再構成してよい
 
-### Flush Policy
+## Zephyr 実装境界
 
-- `Mouse movement / wheel` は固定タイマーを持たない
-- 未送信分は次の USB 送信可能タイミングまで加算保持する
-- `Mouse button` 状態変化時は、その時点の movement / wheel を含めて flush してよい
-- BLE 切断、bond erase、再接続待機移行時は movement / wheel の保留分を 0 化して安全終了する
-
-### Accumulation / Saturation
-
-- movement / wheel の内部保留値は符号付き 16 bit の表現範囲を前提とする
-- 加算時は wraparound させず、report field 上限で飽和させる
-- overflow 分を精密に保持し続けるより、MVP では安全な飽和を優先する
-- 成功送信後は movement / wheel の保留値を 0 に戻す
+- descriptor 定義は USB 専用モジュールに閉じ込める
+- report serializer は bridge core から `report body` を受け取り、USB stack 向けの送信バッファへ変換する
+- HID report descriptor は Zephyr の HID 定義やサンプルを参考に構成する
+- `single HID interface + report IDs` が Zephyr 実装都合で不自然な場合だけ、multi-interface を比較候補に上げる
+- USB stack の切り替えや API 差分は core 層に漏らさない
 
 ## State / Data
 
@@ -169,6 +131,7 @@
 
 - 単一 interface 上での report 長差をどう管理するか
 - 通常 report の破棄 / 再構成をどこまで許容するか
+- `Zephyr USB device stack` 上で composite HID をどう構成するか
 
 ## Failure Handling
 
@@ -184,27 +147,16 @@
 - 実装容易性より BOM コスト優先
 - Windows での実用安定性を最優先する
 
-## Open Questions
-
-- 単一 interface 上で report 長差を実装上どう扱うか
-- `release_pending` を `keyboard release all` と `mouse safe state` の両方成功後に解除する実装で十分か
-- 通常 report の破棄 / 再構成をどの境界で許可するか
-
 ## Validation Needed
 
 - Windows で複合 HID として安定して認識されるか
 - 切断時に stuck key / stuck button を防げるか
 - Consumer Control の stuck を防げるか
 - `HKRO` keyboard report が Windows で期待通り動作するか
-- Consumer Control の `basic` usage 範囲が期待通り動作するか
 - ボタン 1-5 と縦横スクロールが期待通り動作するか
 - ポインティング入力の遅延や欠落が実用範囲か
-- 再接続待機中や bond erase 後に不要な入力が残らないか
 - report ID 方式で Windows 側の相性問題が出ないか
-- movement / wheel 集約で操作感が悪化しないか
-- `all release` 優先送信が実際に stuck input 防止に効くか
-- 最優先フラグ方式で通常 report と競合したときに破綻しないか
-- 飽和加算が実用上問題ないか
+- `single HID interface + report IDs` が Zephyr 実装で破綻しないか
 
 ## Related ADRs
 

@@ -20,37 +20,32 @@
 - 既知広告の再観測で即 connect attempt へ戻ることの確認
 - `fast reconnect` から `backoff reconnect` へ移る閾値の妥当性確認
 - metadata-only 破損からの自動回復確認
-- private address / directed advertisement を含む candidate 判定の成立確認
+- private address を含む candidate 判定の成立確認
 - unresolved private address を誤って recovery 扱いしないことの確認
 - peer address snapshot の診断有効性確認
 - bond 不整合を想定した recovery 導線確認
-- NimBLE `sync_cb` / `reset_cb` / GAP event から状態遷移へ正しく正規化できることの確認
+- Zephyr Bluetooth callback と BLE manager queue の責務分離で実装複雑度を抑えられるか
 - metadata 更新契機を `security 成立後` に置いても不足がないことの確認
 - post-connect bring-up を `connected` 入口条件としても reconnect 体感を損ねないことの確認
 - `Keyboard=1`、`Consumer=2`、`Mouse=3` の report reference 前提が `LaLapadGen2` 実機で成立することの確認
-- `Mouse feature = id 3 / type feature` の有無と扱いが `pointing_smooth_scrolling` 設定と一致することの確認
-- pairing 候補が post-connect validation 失敗時に採用されず cleanup できることの確認
 - `name allowlist` を設定した場合だけ補助フィルタとして効くことの確認
 
 ### USB スパイク
 
 - `Keyboard + Mouse` 複合 HID 列挙
+- `single HID interface + report IDs` の成立確認
 - Keyboard HID 列挙
 - Pointing HID 列挙
 - `HKRO` keyboard report 動作確認
-- `HKRO` descriptor が既存 ZMK 想定と矛盾しないことの確認
 - Consumer Control `basic` usage 動作確認
 - Keyboard / Consumer の順序維持確認
 - Mouse movement / wheel 集約確認
-- Mouse movement / wheel の `next send opportunity` flush 確認
-- Mouse movement / wheel の飽和加算確認
 - Mouse button press / release 順序確認
 - 切断時の全 release
 - `all release` 最優先フラグ動作確認
 - Windows での安定認識
 - ボタン 1-5 の動作確認
 - 縦横スクロールの動作確認
-- Consumer release all 動作確認
 
 ### 結合スパイク
 
@@ -64,15 +59,12 @@
 
 ### Build / Distribution スパイク
 
-- `WSL2` 上の build が日常開発経路として安定するか
-- `Windows` 側 `flash/monitor` を併用したときの手順が過度に複雑にならないか
-- `sdkconfig.defaults` 多段構成で `project`、`board`、`user`、`CI` の責務分離が保てるか
-- `config/user.defaults` の編集だけで allowlist 変更が完結するか
+- `west build` が日常開発経路として安定するか
+- `config/user.conf` の編集だけで allowlist 変更が完結するか
 - 利用者 fork 上の GitHub Actions だけで build artifact を取得できるか
-- artifact 内容だけで利用者が自力で書き込み可能か
-- `merged.bin` 主導線と分割 firmware 補助導線の二本立てが有効か
-- `開発専用 USB CDC` による bring-up が成立するか
-- USB HID 安定化フェーズで `UART` へ寄せる価値が十分あるか
+- `zephyr.uf2` 主導線だけで利用者が自力で書き込み可能か
+- `zephyr.hex` 補助導線が診断に役立つか
+- `USB CDC ACM` を dev profile で許容したとき、bring-up を妨げないか
 
 ## Per-Validation Template
 
@@ -111,30 +103,9 @@
 4. 最小 UI での復旧性
 5. Build / Distribution 導線の成立性
 
-## BLE Spike Decision Outputs
-
-- reconnect scheduling の妥当性確認
-- backoff を `不在時間` ではなく `連続 connect failure` に限定することの妥当性
-- bond 主体の識別を補助する永続化メタデータの最小集合
-- metadata-only 破損を自動回復扱いにしてよいか
-- private address / directed advertisement を含む candidate 判定の許容範囲
-- target stack が privacy 解決をどこまで吸収できるか
-- bond 不整合を recovery へ送る条件
-- NimBLE callback と BLE manager queue の責務分離で実装複雑度を抑えられるか
-- `LaLapadGen2` の HOG report discovery 前提が bridge 実装と矛盾しないか
-
-## Build / Distribution Decision Outputs
-
-- `WSL2 build + Windows flash/monitor` を標準開発導線として採用してよいか
-- user config を repository 追跡ファイルで持つ方針が利用者体験と整合するか
-- fork 上 GitHub Actions artifact 配布が MVP の標準導線として十分か
-- `merged.bin` 主導線と分割 firmware 補助導線の二本立てで追加の見直しが必要か
-- `開発専用 USB CDC` を当面許容しつつ、安定化フェーズで `UART` を再評価する方針に修正が必要か
-- `release profile` と `dev profile` の責務分離で見直しが必要か
-
 ## Initial Baseline
 
-- Board: `Seeed XIAO ESP32-S3`
+- Board: `Seeed XIAO nRF52840`
 - Keyboard: `LaLapadGen2`
 - Host OS: `Windows`
 - UI: `1 external button + 1 RGB USRLED`

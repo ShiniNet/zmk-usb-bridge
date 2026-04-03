@@ -1,49 +1,49 @@
 #include "zmk_usb_bridge/persist.h"
 
-#include <esp_log.h>
 #include <string.h>
+#include <zephyr/logging/log.h>
 
-static const char *TAG = "zub_persist";
+LOG_MODULE_REGISTER(zub_persist, LOG_LEVEL_INF);
 
 static zmk_usb_bridge_metadata_t g_metadata;
 static bool g_has_metadata;
 
-esp_err_t zmk_usb_bridge_persist_init(void) {
+zmk_usb_bridge_status_t zmk_usb_bridge_persist_init(void) {
     memset(&g_metadata, 0, sizeof(g_metadata));
     g_has_metadata = false;
-    ESP_LOGI(TAG, "init");
-    return ESP_OK;
+    LOG_INF("init");
+    return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
-esp_err_t zmk_usb_bridge_persist_load_metadata(zmk_usb_bridge_metadata_t *metadata) {
+zmk_usb_bridge_status_t zmk_usb_bridge_persist_load_metadata(zmk_usb_bridge_metadata_t *metadata) {
     if (metadata == NULL) {
-        return ESP_ERR_INVALID_ARG;
+        return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
     }
 
     if (!g_has_metadata) {
-        return ESP_ERR_NOT_FOUND;
+        return ZMK_USB_BRIDGE_STATUS_NOT_FOUND;
     }
 
     *metadata = g_metadata;
-    return ESP_OK;
+    return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
-esp_err_t zmk_usb_bridge_persist_store_metadata(const zmk_usb_bridge_metadata_t *metadata) {
+zmk_usb_bridge_status_t zmk_usb_bridge_persist_store_metadata(const zmk_usb_bridge_metadata_t *metadata) {
     if (metadata == NULL) {
-        return ESP_ERR_INVALID_ARG;
+        return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
     }
 
     g_metadata = *metadata;
     g_has_metadata = true;
-    return ESP_OK;
+    return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
-esp_err_t zmk_usb_bridge_persist_discard_metadata(void) {
+zmk_usb_bridge_status_t zmk_usb_bridge_persist_discard_metadata(void) {
     memset(&g_metadata, 0, sizeof(g_metadata));
     g_has_metadata = false;
-    return ESP_OK;
+    return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
-esp_err_t zmk_usb_bridge_persist_erase_all(void) {
+zmk_usb_bridge_status_t zmk_usb_bridge_persist_erase_all(void) {
     return zmk_usb_bridge_persist_discard_metadata();
 }

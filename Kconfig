@@ -1,0 +1,17 @@
+menu "ZMK USB Bridge"
+
+config ZMK_USB_BRIDGE_PAIRING_NAME_ALLOWLIST_ENABLED
+    bool "Enable pairing name allowlist"
+    default n
+    help
+      When enabled, the bridge will use an exact-match local name allowlist
+      as an additional filter during unbonded pairing.
+
+config ZMK_USB_BRIDGE_PAIRING_NAME_ALLOWLIST
+    string "Pairing name allowlist"
+    default ""
+    help
+      Comma-separated exact-match local names that are accepted during
+      unbonded pairing when the allowlist is enabled.
+
+endmenu

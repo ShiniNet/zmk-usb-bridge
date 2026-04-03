@@ -15,12 +15,13 @@
 - 単一の既知キーボードとの 1:1 接続を前提とする
 - 常時給電の USB ドングルとして運用する
 - 初期 MVP では `LaLapadGen2` を参照機として扱う
+- 実装基盤は `nRF52840 + Zephyr upstream` とする
 
 ## データフロー
 
 1. ドングル起動
 2. USB HID デバイスとして初期化を進める
-3. 保存済み bond 情報を読み出す
+3. 保存済み bond 情報と app metadata を読み出す
 4. bond が無ければ自動でペアリング探索へ入る
 5. bond があれば既知の対象キーボードを探索し接続する
 6. キーボード入力とポインティング入力を受け取る
@@ -49,18 +50,24 @@
 - bond 初期化操作
 - 状態表示
 
-## 第一候補の実装基盤
+### 永続化
 
-現時点では `ESP32-S3` を第一候補とする。
-理由は以下の通り。
+- BLE stack が管理する bond 情報
+- app 側が管理する補助 metadata
 
-- 低コストな入手性
-- 小型 USB ドングルとして扱いやすい
-- BLE と USB Device の両方を持つ
-- 試作段階で扱いやすい開発ボードが豊富
+## 実装基盤
 
-現時点の試作基板は `Seeed XIAO ESP32-S3` を基準にする。
-BLE stack の暫定第一案は `ESP-IDF NimBLE host + ESP controller` とする。
+現時点では `nRF52840` を採用する。
+初期試作基板は `Seeed XIAO nRF52840` を基準にする。
+ソフトウェア基盤は `Zephyr upstream` を正本とする。
+
+この判断の理由は以下の通り。
+
+- ZMK と同じ Zephyr 系の設計前提へ寄せやすい
+- 本プロジェクトの主戦場である `BLE central + bond + privacy + reconnect` を扱いやすい
+- USB Device を備えた `nRF52840` 上で BLE と USB を同一 SoC に収められる
+- `Seeed XIAO nRF52840` を実験用ドングルとして流用しやすい
+- 認証済みモジュール前提の量産構成へ展開しやすい
 
 ## 技術的な難所
 
@@ -71,6 +78,7 @@ BLE stack の暫定第一案は `ESP-IDF NimBLE host + ESP controller` とする
 - キーボード入力とポインティング入力の USB 提示方法
 - ZMK 向けにどこまで探索条件や接続条件を絞るか
 - 最小 UI でどこまで復旧しやすさを作れるか
+- `Zephyr USB device stack` 上で descriptor と report serialization をどう構成するか
 
 ## 設計原則
 
@@ -79,6 +87,7 @@ BLE stack の暫定第一案は `ESP-IDF NimBLE host + ESP controller` とする
 - 物理部品の追加よりソフトウェア実装で吸収する
 - 設定アプリより先に単体で運用できることを目指す
 - 初期設計は `LaLapadGen2 + Windows` で成立することを優先し、その後に一般化を検討する
+- core の状態遷移と bridge 契約は platform 依存 API から切り離す
 
 ## 直近で決めるべき事項
 
@@ -87,7 +96,7 @@ BLE stack の暫定第一案は `ESP-IDF NimBLE host + ESP controller` とする
 - private address / directed advertisement を含む候補判定をどこまで吸収するか
 - `BLE stack 管理 bond` とアプリ補助メタデータの境界を実装でどう分離するか
 - 1 ボタン + RGB LED の UI をどこまで単純化するか
-- ESP32-S3 を本採用するか、代替 MCU と比較するか
+- `Zephyr USB device stack` 上で `single HID interface + report IDs` を続行するか
 - `release profile` と `dev profile` の境界を build 設計でどう分けるか
 
 ## 詳細設計の置き場

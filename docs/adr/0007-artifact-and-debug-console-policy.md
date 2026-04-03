@@ -2,27 +2,30 @@
 
 ## Status
 
-Accepted for prototyping
+Accepted
 
 ## Context
 
 - 利用者向けには簡潔な書き込み手順を用意したい
 - 一方で、開発者向けには診断しやすい build 出力も残したい
-- `ESP32-S3` では USB HID 本番経路と debug console の干渉に注意が必要
+- `Seeed XIAO nRF52840` は Zephyr 公式 docs で `UF2` 書き込み導線を持つ
+- 初期 bring-up では追加の debug console が欲しいが、release artifact の USB HID 提示形態は崩したくない
 
 ## Decision
 
-- GitHub Actions artifact には `merged.bin` と分割 firmware 一式の両方を含める
-- `merged.bin` は利用者向け主導線とする
-- 分割 firmware 一式には少なくとも `bootloader.bin`、`partition-table.bin`、application `.bin`、`flash_args` を含める
-- debug console は当面 `開発専用 USB CDC` を許容する
-- USB HID 安定化フェーズでは `UART` を第一候補として再評価する
+- GitHub Actions artifact には `zephyr.uf2` と `zephyr.hex` の両方を含める
+- `zephyr.uf2` は利用者向け主導線とする
+- `zephyr.hex` と build metadata は診断・保守向けの補助導線とする
+- debug console は `dev profile` で USB CDC ACM を許容する
+- 詳細なデバッグが必要な場合は外部 SWD probe を用いる
+- `release profile` では不要な debug interface を減らす
 
 ## Consequences
 
 - 利用者向け手順は短く保ちやすい
-- offset や partition 構成を含む診断性も維持できる
-- `開発専用 USB CDC` は立ち上がりを速くするが、安定化後に `UART` へ寄せる判断余地を残す
+- 追加の probe が無くても試作導線を開始しやすい
+- 深い調査では SWD probe が前提になる
+- `dev profile` と `release profile` の責務分離が必要になる
 
 ## Follow-up
 

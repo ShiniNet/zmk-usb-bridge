@@ -41,19 +41,15 @@
 - 再接続は停止せず、scan は継続したまま connect attempt 間隔だけを短周期フェーズから長周期フェーズへ移す
 - 補助メタデータ破損だけでは `recovery_required` に入らず、metadata discard 後に通常の既知デバイス再接続へ戻す
 - 既存 bond の不整合が確定した場合のみ `recovery_required` に入る
-- unresolved private address や directed advertisement の再検出失敗だけでは `recovery_required` に入らない
+- unresolved private address の再検出失敗だけでは `recovery_required` に入らない
 - bond erase 後は `pairing_scan` に遷移する
-
-### 未決定
-
-- `fatal_error` とみなす条件
 
 ## Events
 
 - USB 給電開始
 - USB enumeration 完了
 - startup persist 判定完了 (`bond あり` / `bond なし`)
-- BLE sync 完了
+- BLE 初期化完了
 - 既知デバイス広告検出
 - Pairing 要求
 - Pairing 成功 / 失敗
@@ -74,7 +70,7 @@
 ### `usb_ready`
 
 - USB HID device として待機可能な状態
-- `BLE sync 完了` と `startup persist 判定完了` を待つ合流点として扱う
+- `BLE 初期化完了` と `startup persist 判定完了` を待つ合流点として扱う
 - readiness gate 通過後、`bond あり` なら `scanning_known_device`、`bond なし` なら `pairing_scan` へ分岐する
 
 ### `pairing_scan`
@@ -134,10 +130,6 @@
 - `connecting` 中の bring-up 失敗は、pairing と reconnect で戻り先を分けて扱う
 - USB 側致命エラー時のみ `fatal_error` を許容する
 
-## Open Questions
-
-- 起動直後の LED 表示と内部状態をどう対応付けるか
-
 ## Validation Needed
 
 - 主要イベント列を時系列でトレースできるか
@@ -145,9 +137,7 @@
 - 想定外の順序でも復旧可能か
 - 継続再接続がホストや SoC に悪影響を与えないか
 - scan 継続 + attempt backoff の組み合わせで reconnect 体感が悪化しないか
-- 既知広告の再観測で `reconnecting_backoff` から `reconnecting_fast` へ自然に戻せるか
 - metadata-only 破損で `recovery_required` へ誤遷移しないか
-- unresolved private address だけで `recovery_required` へ誤遷移しないか
 
 ## Related Documents
 
