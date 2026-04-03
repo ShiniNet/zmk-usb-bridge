@@ -23,6 +23,16 @@
 - 再接続リトライ制御
 - scan filter と connect attempt 制御
 
+## Runtime Module Boundary
+
+- `ble_manager` は BLE 全体の coordinator と event queue 所有者に留める
+- Zephyr stack 初期化と callback 登録は `ble_runtime` に置く
+- explicit scan と advertisement parse は `ble_scan` に置く
+- connect / disconnect / security callback 正規化は `ble_connection` に置く
+- fast reconnect / backoff reconnect の schedule は `ble_reconnect` に置く
+- HOG bring-up は `hog_client` を維持して分離する
+- 詳細な責務分割の正本は `docs/subsystems/ble-runtime.md` とする
+
 ## MVP Baseline
 
 - 参照キーボードは `LaLapadGen2`
@@ -118,20 +128,21 @@
 
 ### Unbonded Pairing Scan
 
-- passive scan を継続する
+- 初回 pairing 探索は active scan を使う
 - `connectable advertisement` のみを対象にする
 - advertisement または scan response に `HID service` が見えることを最低条件にする
 - advertisement の `Appearance` が keyboard 系であることを追加条件の第一候補とする
-- local name はあればログや補助判断に使ってよいが、MVP では必須条件にしない
-- `name allowlist` は optional config とし、設定されている場合だけ `local name` 一致を補助条件に加えてよい
+- local name は advertisement または scan response から取得し、あればログや補助判断に使ってよい
+- `name allowlist` は optional config とし、設定されている場合は `local name` 一致を補助条件として使う
+- `name allowlist` を使わない場合でも、pairing 探索は scan response を拾える active scan のままでよい
 - 利用者には対象キーボードだけを pairing mode にしてもらう
 - 接続候補を見つけたら `scan stop -> connect attempt` へ進み、失敗したら scan を再開する
 
 ### Bonded Reconnect Scan
 
-- passive scan を継続する
+- bonded reconnect は passive scan を継続する
 - 既知 bond に対応する相手だけを接続候補にする
-- local name や RSSI は認証条件にしない
+- local name 取得や scan response は不要とし、local name や RSSI は認証条件にしない
 - privacy 解決済み identity を candidate 判定に使える場合はそれを最優先する
 - 既知デバイスの広告を新たに観測した時点では、backoff 状態を持ち越さず即 `scan stop -> connect attempt` 候補に戻す
 
@@ -151,6 +162,7 @@
 
 - 既知デバイスの識別原則は `bond 情報を主キーとして扱う`
 - reconnect 可否の最終判断は `BLE stack が保持する bond` と、それに紐づく identity 解決結果を基準にする
+- MVP の known-device reconnect では `bond / identity` のみを正本とし、アプリ補助メタデータは照合条件に使わない
 - 同名の別個体は bond 不一致として区別する
 - bond が一致しないデバイスには自動再接続しない
 - 保存した補助メタデータがあっても、それだけで接続を許可しない
@@ -161,7 +173,7 @@
 - アプリ側永続化は `補助メタデータ` のみを持ち、bond の代替主キーは持たない
 - MVP の補助メタデータ最小集合は `metadata format version`、`identity snapshot if available`、`last successful peer address snapshot` とする
 - `identity snapshot if available` は stack が安定した identity address を参照できる場合だけ保存候補にする
-- `peer address snapshot` は診断と次回初回 attempt のヒントに留め、bond 不一致を覆す根拠にはしない
+- `peer address snapshot` は診断専用に留め、known-device reconnect の接続可否判定には使わない
 - local name、RSSI、advertisement 上の service 列挙結果は補助メタデータに含めない
 - 補助メタデータ欠損や破損だけでは再ペアリングへ倒さず、bond が有効なら bond 主体で再接続を継続する
 
@@ -196,3 +208,9 @@
 - local bond が読めない、または存在しない場合は既知デバイス扱いをやめて `pairing_scan` へ戻す
 - local bond はあるが認証や暗号化で不整合が確定した場合は `recovery_required` とし、ボタン長押しによる bond erase 導線を用意する
 - 接続断時は USB 側へ release 処理を要求して stuck input を防ぐ
+
+## Related Documents
+
+- `docs/subsystems/ble-runtime.md`
+- `docs/cross-cutting/state-machine.md`
+- `docs/cross-cutting/persistence.md`

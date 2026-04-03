@@ -39,7 +39,8 @@
 ### 補助メタデータの役割
 
 - bond が無い状態から既知デバイスを証明する役割は持たない
-- ログ、診断、初回 attempt のヒントとして使う
+- ログと診断に使う
+- known-device reconnect の接続可否判定には使わない
 - 欠損しても次回正常接続後に再生成できることを優先する
 - private address の追跡や自前解決には使わない
 
@@ -65,6 +66,7 @@
 - bond ストア自体が読めない、存在しない、または初期化済みなら既知デバイス扱いをやめる
 - 認証や暗号化で既存 bond の不整合が確定した場合は recovery 導線へ移す
 - `peer address snapshot` が現在広告アドレスと一致しないことだけでは fault にしない
+- `peer address snapshot` が現在広告アドレスと不一致でも、それだけで reconnect 候補から外す根拠にはしない
 - bond erase 完了後に古い情報を参照しない
 
 ## Constraints

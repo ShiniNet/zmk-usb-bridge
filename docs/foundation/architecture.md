@@ -32,9 +32,14 @@
 
 ### BLE 側
 
+- BLE coordinator (`ble_manager`)
+- startup coordinator
+- BLE runtime init / callback registration
 - 探索対象を絞るフィルタ
+- explicit scan 制御
+- 接続と security の管理
+- reconnect scheduling
 - ペアリング / bond 管理
-- 再接続制御
 - HID 入力受信
 
 ### USB 側
@@ -104,6 +109,7 @@
 ## 詳細設計の置き場
 
 - BLE: `docs/subsystems/ble.md`
+- BLE runtime 分割: `docs/subsystems/ble-runtime.md`
 - USB: `docs/subsystems/usb.md`
 - Recovery UI: `docs/subsystems/recovery-ui.md`
 - 状態遷移: `docs/cross-cutting/state-machine.md`

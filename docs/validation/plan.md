@@ -29,6 +29,8 @@
 - post-connect bring-up を `connected` 入口条件としても reconnect 体感を損ねないことの確認
 - `Keyboard=1`、`Consumer=2`、`Mouse=3` の report reference 前提が `LaLapadGen2` 実機で成立することの確認
 - `name allowlist` を設定した場合だけ補助フィルタとして効くことの確認
+- active pairing scan で advertisement または scan response から allowlist 名を安定して取得できることの確認
+- bonded reconnect が passive scan のみで成立し、local name 取得に依存しないことの確認
 
 ### USB スパイク
 

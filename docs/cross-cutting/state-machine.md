@@ -35,6 +35,7 @@
 ### 決定済み
 
 - 電源投入後はまず USB を初期化し、その後 BLE 側の処理へ入る
+- `state_machine` は BLE stack API を直接呼ばず、BLE ドメインへは高水準 command だけを出す
 - 保存済み bond があれば既知キーボードへの自動再接続を試みる
 - 保存済み bond が無ければ自動で `pairing_scan` に入る
 - 接続断時は USB 側を安全状態に戻した上で自動再接続へ入る
@@ -60,6 +61,15 @@
 - ボタン短押し
 - Bond erase 操作
 
+## BLE Commands
+
+- `START_PAIRING_SCAN`
+- `START_KNOWN_DEVICE_SCAN`
+- `ENTER_RECONNECT_FAST`
+- `ENTER_RECONNECT_BACKOFF`
+- `STOP_SCAN`
+- `ERASE_BONDS`
+
 ## State Outline
 
 ### `boot`
@@ -71,6 +81,7 @@
 
 - USB HID device として待機可能な状態
 - `BLE 初期化完了` と `startup persist 判定完了` を待つ合流点として扱う
+- これらの readiness 入力は `startup` coordinator から event として流し込む
 - readiness gate 通過後、`bond あり` なら `scanning_known_device`、`bond なし` なら `pairing_scan` へ分岐する
 
 ### `pairing_scan`

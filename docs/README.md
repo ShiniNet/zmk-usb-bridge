@@ -17,6 +17,7 @@
 BLE、USB、Recovery UI など、機能単位の詳細設計を置く。
 
 - `subsystems/ble.md`
+- `subsystems/ble-runtime.md`
 - `subsystems/usb.md`
 - `subsystems/recovery-ui.md`
 

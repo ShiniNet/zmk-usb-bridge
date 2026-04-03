@@ -17,7 +17,12 @@ target_include_directories(app PRIVATE main/include)
 
 target_sources(app PRIVATE
     main/app_main.c
+    main/src/startup.c
+    main/src/ble_connection.c
     main/src/ble_manager.c
+    main/src/ble_reconnect.c
+    main/src/ble_runtime.c
+    main/src/ble_scan.c
     main/src/bridge.c
     main/src/hog_client.c
     main/src/pairing_filter.c

@@ -1,0 +1,8 @@
+#pragma once
+
+#include "zmk_usb_bridge/status.h"
+
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_init(void);
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_enter_fast_mode(void);
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_enter_backoff_mode(void);
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_reset_fast_reconnect(void);
