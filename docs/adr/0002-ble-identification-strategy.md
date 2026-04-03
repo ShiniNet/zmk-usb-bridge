@@ -15,12 +15,15 @@ Accepted for MVP
 
 - 初回ペアリングでは、利用者に対象キーボードだけを pairing mode にしてもらう運用を採る
 - ドングルは bond 未登録なら自動で pairing 探索を開始する
-- unbonded pairing scan では `connectable advertisement` と `HID service` を最低条件にする
-- pairing 探索中は、その場で最初に接続成立した相手を採用する
+- unbonded pairing scan では `connectable advertisement` と `HID service` と `keyboard appearance` を最低条件にする
+- optional config として `local name allowlist` を持てるようにし、設定されている場合だけ補助条件として使う
+- 初期実装では `CONFIG_ZMK_USB_BRIDGE_PAIRING_NAME_ALLOWLIST_ENABLED` と `CONFIG_ZMK_USB_BRIDGE_PAIRING_NAME_ALLOWLIST` を用いる
+- pairing 探索中は、その場で最初に接続成立した相手を即採用せず、post-connect validation を通過した相手を採用する
 - 既知デバイス再接続では bond 情報を主キーにして同名別個体を区別する
 - local name は補助情報に留め、認証の主条件にしない
 - scan 自体は継続し、connect attempt にだけ backoff をかける
 - 厳密な ZMK 機種判別は MVP では必須にしない
+- `LaLapadGen2` 前提の MVP では、post-connect validation の一部として期待 report reference を確認してよい
 
 ## Options Considered
 
@@ -39,10 +42,11 @@ Accepted for MVP
 ## Consequences
 
 - 初回 pairing は運用前提に依存するため、複数機器が同時に pairing mode に入る環境には弱い
-- `connectable + HID service` の最低 filter により、無関係な BLE 機器への誤接続リスクを少し下げられる
+- `connectable + HID service + keyboard appearance` により、無関係な BLE 機器への誤接続リスクをさらに下げられる
 - bond 後の再接続では誤接続リスクを大きく下げられる
 - MVP の対象を `LaLapadGen2` に絞ることで、一般化より先に実利用に近い検証を進められる
 - local name を主キーにしないため、名前変更や同名機器に引きずられにくい
+- allowlist を補助条件に限定することで、user control を残しつつ bond 後の識別正本を汚さずに済む
 - scan を止めないため復帰機会は維持しやすいが、attempt backoff 定数は試作で妥当性確認が必要になる
 - 将来の汎用化では advertisement filter や接続後確認条件を追加する余地が残る
 

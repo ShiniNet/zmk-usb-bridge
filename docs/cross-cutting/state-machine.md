@@ -52,9 +52,12 @@
 
 - USB 給電開始
 - USB enumeration 完了
+- startup persist 判定完了 (`bond あり` / `bond なし`)
+- BLE sync 完了
 - 既知デバイス広告検出
 - Pairing 要求
 - Pairing 成功 / 失敗
+- HID bring-up 完了 / 失敗
 - BLE 切断
 - Bond/auth mismatch 検出
 - USB 側エラー
@@ -71,13 +74,14 @@
 ### `usb_ready`
 
 - USB HID device として待機可能な状態
-- bond の有無に応じて次状態を分岐する
+- `BLE sync 完了` と `startup persist 判定完了` を待つ合流点として扱う
+- readiness gate 通過後、`bond あり` なら `scanning_known_device`、`bond なし` なら `pairing_scan` へ分岐する
 
 ### `pairing_scan`
 
 - bond 未登録時の自動ペアリング探索
-- その場で最初に成立した対象を採用する
-- `connectable + HID service` を最低条件にした scan を継続する
+- `connectable + HID service + keyboard appearance` を最低条件にした scan を継続する
+- 接続成立だけでは採用せず、`connecting` 内の adopt 前検証を通過した対象だけを採用する
 
 ### `scanning_known_device`
 
@@ -90,6 +94,7 @@
 
 - 発見済み対象へ接続し、入力受信の確立を待つ
 - BLE link up 後の security、service discovery、input report subscribe 完了までを含む
+- 初回 pairing 中は `adopt 前検証` もこの状態に含める
 
 ### `connected`
 
@@ -126,6 +131,7 @@
 - Bond 不整合を検出したら bond erase 導線を明示する
 - 再接続は継続するが、同一候補への高頻度 connect attempt を永続しないようにバックオフする
 - 補助メタデータ破損だけでは `recovery_required` に入れず、再生成可能な fault として扱う
+- `connecting` 中の bring-up 失敗は、pairing と reconnect で戻り先を分けて扱う
 - USB 側致命エラー時のみ `fatal_error` を許容する
 
 ## Open Questions

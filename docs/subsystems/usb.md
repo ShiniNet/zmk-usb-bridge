@@ -140,6 +140,7 @@
 ### Disconnect / Recovery Behavior
 
 - BLE 切断時は `release_pending` のような最優先フラグを立て、通常送信より先に `keyboard release all` を送る
+- `consumer release all` も keyboard と同じ safe-state 手順に含める
 - その後に `mouse button release all` と `zero movement / zero scroll` を送る
 - bond erase 時も同様に USB 側を安全状態へ戻してから再ペアリングへ進む
 - 再接続待機中に新しい入力を送らない
@@ -193,7 +194,7 @@
 - BLE 切断時の全 release 手順
 - USB 側 enumeration 失敗時の扱い
 - レポート欠落や重複送出の抑止
-- BLE 切断や bond erase 時には keyboard と pointer の両方を即座に release する
+- BLE 切断や bond erase 時には keyboard と consumer と pointer のすべてを即座に release する
 - 再接続待機中にホストへ不正な入力を出し続けない
 - movement / wheel 集約によって pointer の体感遅延が増えすぎないこと
 
@@ -213,6 +214,7 @@
 
 - Windows で複合 HID として安定して認識されるか
 - 切断時に stuck key / stuck button を防げるか
+- Consumer Control の stuck を防げるか
 - `HKRO` keyboard report が Windows で期待通り動作するか
 - Consumer Control の `basic` usage 範囲が期待通り動作するか
 - ボタン 1-5 と縦横スクロールが期待通り動作するか

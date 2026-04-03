@@ -108,7 +108,8 @@
 - `sync_cb`: bond / metadata / own address type の準備完了後、`pairing_scan` または `scanning_known_device` を開始する
 - `reset_cb`: 自動再接続を一時停止し、host 再同期後に scan を再開する
 - `BLE_GAP_EVENT_DISC`: scan policy に従って candidate 判定し、known peer を観測したら即 `connecting` または `reconnecting_fast` の attempt を許可する
-- `BLE_GAP_EVENT_CONNECT`: 成功なら `connected` へ進み、失敗なら `fast reconnect` または `backoff reconnect` の schedule を更新する
+- `BLE_GAP_EVENT_CONNECT`: 成功時は即 `connected` に入らず `connecting` を維持し、post-connect bring-up を開始する
+- `BLE_GAP_EVENT_CONNECT`: 失敗時は `fast reconnect` または `backoff reconnect` の schedule を更新する
 - `BLE_GAP_EVENT_DISCONNECT`: USB safe state を要求し、known bond が有効なら reconnect 系状態へ戻す
 - `BLE_GAP_EVENT_ENC_CHANGE` または同等の security 完了通知: bond / authentication 成立を確認し、metadata 再生成可否を判断する
 - `BLE_GAP_EVENT_REPEAT_PAIRING` または同等の既存 bond 衝突通知: 自動 erase はせず、MVP では `recovery_required` 判定候補として扱う
@@ -123,6 +124,15 @@
 - `connected` は `bond / security 成立済み` かつ `必要な input report subscription 完了済み` のときだけ入る
 - Consumer Control や Pointer に必要な report が欠ける場合の扱いは MVP では `LaLapadGen2` 必須前提で fail-fast 寄りにする
 - host LED output や feature report は MVP の bring-up 完了条件に含めない
+- bring-up 途中の失敗は `connect failure` と同等に扱い、pairing 中なら `pairing_scan` へ、既知 peer なら reconnect 系状態へ戻す
+
+### Startup Readiness Gate
+
+- 起動時の scan 開始条件は `USB ready`、`BLE sync 完了`、`bond 有無の判定完了` の 3 つが揃った時点とする
+- `USB ready` 前に BLE 初期化を進めてもよいが、scan / connect 開始は readiness gate 通過後まで許可しない
+- `bond 有無の判定完了` は、NimBLE store の既知 bond 状態と app metadata 読み出し結果をまとめて `startup decision` として扱う
+- metadata が欠損・破損していても、bond が有効なら readiness gate の結果は `known bond present` とする
+- readiness gate 通過後、`known bond present` なら `scanning_known_device`、それ以外なら `pairing_scan` へ入る
 
 ### HOG Report Handling Baseline
 
@@ -175,7 +185,10 @@
 - passive scan を継続する
 - `connectable advertisement` のみを対象にする
 - advertisement または scan response に `HID service` が見えることを最低条件にする
+- advertisement の `Appearance` が keyboard 系であることを追加条件の第一候補とする
 - local name はあればログや補助判断に使ってよいが、MVP では必須条件にしない
+- optional config として `name allowlist` を持てるようにし、設定されている場合だけ `local name` 一致を補助条件に加えてよい
+- 初期実装では `CONFIG_ZMK_USB_BRIDGE_PAIRING_NAME_ALLOWLIST_ENABLED` と `CONFIG_ZMK_USB_BRIDGE_PAIRING_NAME_ALLOWLIST` を想定する
 - 利用者には対象キーボードだけを pairing mode にしてもらう
 
 ### Bonded Reconnect Scan
@@ -192,8 +205,13 @@
 
 - ドングルに bond が無い場合は自動でペアリング探索を開始する
 - 利用者には対象キーボードだけをペアリングモードにしてもらう
-- ドングルは MVP では厳密な機種判別よりも、`connectable + HID service` と `想定対象だけが pairing mode に入っている` 運用前提を採る
-- 最初に接続成立したキーボードを採用し、bond 保存後は以後の既知デバイスとして扱う
+- ドングルは MVP では厳密な機種判別よりも、`connectable + HID service + keyboard appearance` と `想定対象だけが pairing mode に入っている` 運用前提を採る
+- `name allowlist` が設定されている場合だけ、advertisement / scan response の local name 一致を追加条件にしてよい
+- 初期実装では allowlist の形式を `comma-separated exact match` とする
+- 最初に接続成立したキーボードを即採用せず、post-connect validation を通過した相手だけを採用する
+- post-connect validation では、少なくとも `HIDS service 存在`、`必要 input report 発見`、`必要 report reference の整合` を確認する
+- `LaLapadGen2` 前提の MVP では `Keyboard=1`、`Consumer=2`、`Mouse=3` の report reference 条件を採用条件にしてよい
+- post-connect validation に失敗した相手は `adopt しない`。pairing により一時 bond が生成されていた場合は、その接続の cleanup と bond erase を行って scan へ戻る
 
 ### 既知デバイス再接続
 
@@ -212,6 +230,7 @@
 - `peer address snapshot` は診断と次回初回 attempt のヒントに留め、bond 不一致を覆す根拠にはしない
 - local name、RSSI、advertisement 上の service 列挙結果は補助メタデータに含めない
 - 補助メタデータ欠損や破損だけでは再ペアリングへ倒さず、bond が有効なら bond 主体で再接続を継続する
+- local name の allowlist は `初回 pairing の補助条件` にのみ使い、bond 後の既知 peer 識別には使わない
 
 ### Privacy / Directed Advertisement Policy
 
@@ -245,6 +264,7 @@
 
 - 接続失敗時はまず `fast reconnect` を行い、連続失敗時のみ再接続バックオフへ移行する
 - 誤った対象へ接続するリスクは `対象キーボードのみを pairing mode にする` 運用で最小化する
+- 誤採用リスクは `connectable + HID service + keyboard appearance` と post-connect validation でさらに下げる
 - 補助メタデータの欠損、破損、version 不一致は `metadata discard + 再生成待ち` として扱う
 - local bond が読めない、または存在しない場合は既知デバイス扱いをやめて `pairing_scan` へ戻す
 - local bond はあるが認証や暗号化で不整合が確定した場合は `recovery required` とし、ボタン長押しによる bond erase 導線を用意する
@@ -283,8 +303,10 @@
 
 - `LaLapadGen2` を安定して広告検出できるか
 - `connectable + HID service` filter で pairing scan が十分に成立するか
+- `keyboard appearance` を加えても pairing 成立率が落ちすぎないか
 - Bond 永続化後の自動再接続が Windows 運用で実用的か
 - security 成立後に HOG service / input report subscribe を完了し、初回入力を落とさず USB bridge へ渡せるか
+- post-connect validation 失敗時に一時 bond を確実に消去して scan へ戻れるか
 - 既知デバイス広告の再観測直後に即 connect attempt へ入れるか
 - `fast reconnect` から `backoff reconnect` への移行条件が reconnect 体感を悪化させないか
 - 補助メタデータを消した状態でも bond 主体で再接続を継続できるか
@@ -293,6 +315,7 @@
 - ボンド済み個体と同名別個体を区別できるか
 - private address や directed advertisement を含んでも既知個体の再接続判断が破綻しないか
 - `peer address snapshot` が診断に役立つか、また再接続ヒントとして過剰に依存しなくて済むか
+- `name allowlist` を導入する場合、dynamic device name や user rename と衝突しない運用にできるか
 
 ## Related ADRs
 

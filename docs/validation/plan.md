@@ -15,6 +15,7 @@
 - 自動再接続
 - 継続再接続時のバックオフ挙動
 - `connectable + HID service` filter の成立確認
+- `keyboard appearance` 追加後も候補検出が成立することの確認
 - scan 継続 + connect attempt backoff の成立確認
 - 既知広告の再観測で即 connect attempt へ戻ることの確認
 - `fast reconnect` から `backoff reconnect` へ移る閾値の妥当性確認
@@ -28,6 +29,8 @@
 - post-connect bring-up を `connected` 入口条件としても reconnect 体感を損ねないことの確認
 - `Keyboard=1`、`Consumer=2`、`Mouse=3` の report reference 前提が `LaLapadGen2` 実機で成立することの確認
 - `Mouse feature = id 3 / type feature` の有無と扱いが `pointing_smooth_scrolling` 設定と一致することの確認
+- pairing 候補が post-connect validation 失敗時に採用されず cleanup できることの確認
+- `name allowlist` を設定した場合だけ補助フィルタとして効くことの確認
 
 ### USB スパイク
 
@@ -47,6 +50,7 @@
 - Windows での安定認識
 - ボタン 1-5 の動作確認
 - 縦横スクロールの動作確認
+- Consumer release all 動作確認
 
 ### 結合スパイク
 

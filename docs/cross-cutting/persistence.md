@@ -39,8 +39,8 @@
 
 - `BLE stack` が保持する既知キーボード 1 台分の bond 関連データ
 - 補助メタデータの永続化フォーマットバージョン
-- stack が安定した identity を参照できる場合だけ、その snapshot
-- 最後に正常接続できた peer address の snapshot
+- stack が安定した identity を参照できる場合だけ、その `addr_type + addr[6]` snapshot
+- 最後に正常接続できた peer の `addr_type + addr[6]` snapshot
 
 ### 補助メタデータの役割
 
@@ -64,7 +64,7 @@
 
 ## Lifecycle
 
-- 初回ペアリング成功時に保存
+- 初回ペアリング直後ではなく、`security 成立 + required HOG profile 検証通過` 後に採用情報を保存する
 - 起動時に読み出し
 - 補助メタデータが欠損していても bond が有効なら既知デバイス再接続へ進む
 - Bond erase 操作時に消去
@@ -72,6 +72,7 @@
 - 読み出し成功かつ bond が有効なら既知デバイス再接続へ進む
 - 読み出し結果が空または消去済みなら自動で `pairing_scan` へ進む
 - 補助メタデータを破棄した場合は、次回正常接続成功時に再生成する
+- 初回 pairing で一時 bond が生成されても、adopt 前検証に失敗した相手は永続採用せず cleanup する
 
 ## Failure Handling
 
@@ -83,6 +84,7 @@
 - 中途半端な更新を避ける
 - bond erase 完了後に古い情報を参照しない
 - 補助メタデータ不一致だけでは bond 一致を否定しない
+- adopt 前検証に失敗した接続が一時 bond を残さないよう、disconnect 前に cleanup 手順を持つ
 
 ## Constraints
 

@@ -4,6 +4,7 @@ idf_component_register(
         "src/ble_manager.c"
         "src/bridge.c"
         "src/hog_client.c"
+        "src/pairing_filter.c"
         "src/persist.c"
         "src/recovery_ui.c"
         "src/state_machine.c"

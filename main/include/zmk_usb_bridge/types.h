@@ -38,6 +38,8 @@ typedef enum {
     ZMK_USB_BRIDGE_EVENT_NONE = 0,
     ZMK_USB_BRIDGE_EVENT_USB_READY,
     ZMK_USB_BRIDGE_EVENT_BLE_SYNCED,
+    ZMK_USB_BRIDGE_EVENT_PERSIST_READY_WITH_BOND,
+    ZMK_USB_BRIDGE_EVENT_PERSIST_READY_NO_BOND,
     ZMK_USB_BRIDGE_EVENT_SCAN_STARTED,
     ZMK_USB_BRIDGE_EVENT_KNOWN_DEVICE_FOUND,
     ZMK_USB_BRIDGE_EVENT_PAIRING_CANDIDATE_FOUND,
@@ -45,6 +47,7 @@ typedef enum {
     ZMK_USB_BRIDGE_EVENT_CONNECT_FAILURE,
     ZMK_USB_BRIDGE_EVENT_SECURITY_READY,
     ZMK_USB_BRIDGE_EVENT_HID_READY,
+    ZMK_USB_BRIDGE_EVENT_HID_FAILURE,
     ZMK_USB_BRIDGE_EVENT_DISCONNECTED,
     ZMK_USB_BRIDGE_EVENT_HOST_RESET,
     ZMK_USB_BRIDGE_EVENT_BOND_MISMATCH,
@@ -56,8 +59,9 @@ typedef enum {
 
 typedef struct {
     zmk_usb_bridge_event_type_t type;
-    int status_code;
-    void *context;
+    int32_t status_code;
+    uint16_t conn_handle;
+    uint16_t reserved;
 } zmk_usb_bridge_event_t;
 
 typedef struct {
@@ -78,9 +82,13 @@ typedef struct {
 } zmk_usb_bridge_hog_profile_t;
 
 typedef struct {
+    bool valid;
+    uint8_t addr_type;
+    uint8_t addr[6];
+} zmk_usb_bridge_peer_addr_snapshot_t;
+
+typedef struct {
     uint8_t metadata_version;
-    bool has_identity_snapshot;
-    uint8_t identity_snapshot[8];
-    bool has_last_peer_snapshot;
-    uint8_t last_peer_snapshot[8];
+    zmk_usb_bridge_peer_addr_snapshot_t identity_snapshot;
+    zmk_usb_bridge_peer_addr_snapshot_t last_peer_snapshot;
 } zmk_usb_bridge_metadata_t;
