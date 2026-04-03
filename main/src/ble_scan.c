@@ -1,25 +1,257 @@
 #include "zmk_usb_bridge/ble_scan.h"
 
+#include "zmk_usb_bridge/ble_manager.h"
+#include "zmk_usb_bridge/pairing_filter.h"
+#include "zmk_usb_bridge/ble_runtime.h"
+
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/gap.h>
+#include <zephyr/bluetooth/uuid.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/util.h>
+
+#include <string.h>
 
 LOG_MODULE_REGISTER(zub_ble_scan, LOG_LEVEL_INF);
 
+enum {
+    ZMK_USB_BRIDGE_SCAN_CACHE_SIZE = 8,
+    ZMK_USB_BRIDGE_SCAN_NAME_MAX = 32,
+};
+
+typedef struct {
+    bool in_use;
+    bool reported;
+    bt_addr_le_t addr;
+    bool connectable;
+    bool has_hid_service;
+    bool has_keyboard_appearance;
+    bool has_local_name;
+    char local_name[ZMK_USB_BRIDGE_SCAN_NAME_MAX + 1];
+} zmk_usb_bridge_scan_candidate_state_t;
+
+static bool g_scan_callbacks_registered;
+static bool g_scan_active;
+static bool g_pairing_mode;
+static zmk_usb_bridge_scan_candidate_state_t g_candidate_cache[ZMK_USB_BRIDGE_SCAN_CACHE_SIZE];
+
+static bool appearance_is_keyboard_family(uint16_t appearance) {
+    return appearance == BT_APPEARANCE_HID_KEYBOARD || appearance == BT_APPEARANCE_GENERIC_HID;
+}
+
+static void reset_candidate_cache(void) {
+    memset(g_candidate_cache, 0, sizeof(g_candidate_cache));
+}
+
+static zmk_usb_bridge_scan_candidate_state_t *find_candidate_slot(const bt_addr_le_t *addr) {
+    zmk_usb_bridge_scan_candidate_state_t *free_slot = NULL;
+
+    for (size_t i = 0; i < ARRAY_SIZE(g_candidate_cache); i++) {
+        if (g_candidate_cache[i].in_use && bt_addr_le_eq(&g_candidate_cache[i].addr, addr)) {
+            return &g_candidate_cache[i];
+        }
+
+        if (!g_candidate_cache[i].in_use && free_slot == NULL) {
+            free_slot = &g_candidate_cache[i];
+        }
+    }
+
+    if (free_slot != NULL) {
+        free_slot->in_use = true;
+        bt_addr_le_copy(&free_slot->addr, addr);
+        free_slot->reported = false;
+        free_slot->connectable = false;
+        free_slot->has_hid_service = false;
+        free_slot->has_keyboard_appearance = false;
+        free_slot->has_local_name = false;
+        memset(free_slot->local_name, 0, sizeof(free_slot->local_name));
+    }
+
+    return free_slot;
+}
+
+static bool parse_ad_element(struct bt_data *data, void *user_data) {
+    zmk_usb_bridge_scan_candidate_state_t *candidate = user_data;
+
+    if (candidate == NULL || data == NULL) {
+        return false;
+    }
+
+    switch (data->type) {
+    case BT_DATA_UUID16_SOME:
+    case BT_DATA_UUID16_ALL:
+        for (size_t offset = 0; offset + sizeof(uint16_t) <= data->data_len;
+             offset += sizeof(uint16_t)) {
+            if (sys_get_le16(&data->data[offset]) == BT_UUID_HIDS_VAL) {
+                candidate->has_hid_service = true;
+                break;
+            }
+        }
+        break;
+    case BT_DATA_GAP_APPEARANCE:
+        if (data->data_len >= sizeof(uint16_t)) {
+            candidate->has_keyboard_appearance =
+                candidate->has_keyboard_appearance ||
+                appearance_is_keyboard_family(sys_get_le16(data->data));
+        }
+        break;
+    case BT_DATA_NAME_COMPLETE:
+    case BT_DATA_NAME_SHORTENED: {
+        const size_t copy_len = MIN((size_t)data->data_len, ZMK_USB_BRIDGE_SCAN_NAME_MAX);
+        memcpy(candidate->local_name, data->data, copy_len);
+        candidate->local_name[copy_len] = '\0';
+        candidate->has_local_name = copy_len > 0U;
+        break;
+    }
+    default:
+        break;
+    }
+
+    return true;
+}
+
+static void maybe_log_pairing_candidate(zmk_usb_bridge_scan_candidate_state_t *candidate) {
+    zmk_usb_bridge_pairing_candidate_t pairing_candidate;
+
+    if (candidate == NULL || candidate->reported) {
+        return;
+    }
+
+    pairing_candidate = (zmk_usb_bridge_pairing_candidate_t) {
+        .connectable = candidate->connectable,
+        .has_hid_service = candidate->has_hid_service,
+        .has_keyboard_appearance = candidate->has_keyboard_appearance,
+        .local_name = candidate->has_local_name ? candidate->local_name : NULL,
+    };
+
+    if (!zmk_usb_bridge_pairing_filter_accept_unbonded_candidate(&pairing_candidate)) {
+        return;
+    }
+
+    candidate->reported = true;
+    LOG_INF(
+        "pairing candidate matched name=%s connectable=%d hid=%d keyboard_app=%d",
+        candidate->has_local_name ? candidate->local_name : "<none>",
+        candidate->connectable,
+        candidate->has_hid_service,
+        candidate->has_keyboard_appearance
+    );
+}
+
+static void on_scan_recv(const struct bt_le_scan_recv_info *info, struct net_buf_simple *buf) {
+    zmk_usb_bridge_scan_candidate_state_t *candidate;
+
+    if (info == NULL || buf == NULL || info->addr == NULL) {
+        return;
+    }
+
+    candidate = find_candidate_slot(info->addr);
+    if (candidate == NULL) {
+        LOG_WRN("scan candidate cache full");
+        return;
+    }
+
+    candidate->connectable = candidate->connectable ||
+        ((info->adv_props & BT_GAP_ADV_PROP_CONNECTABLE) != 0U);
+    bt_data_parse(buf, parse_ad_element, candidate);
+
+    if (g_pairing_mode) {
+        maybe_log_pairing_candidate(candidate);
+    }
+
+    LOG_DBG(
+        "scan recv type=%u props=0x%04x rssi=%d pairing=%d name=%s hid=%d keyapp=%d",
+        info->adv_type,
+        info->adv_props,
+        info->rssi,
+        g_pairing_mode,
+        candidate->has_local_name ? candidate->local_name : "<none>",
+        candidate->has_hid_service,
+        candidate->has_keyboard_appearance
+    );
+}
+
+static void on_scan_timeout(void) {
+    LOG_INF("scan timeout");
+    g_scan_active = false;
+}
+
+static struct bt_le_scan_cb g_scan_callbacks = {
+    .recv = on_scan_recv,
+    .timeout = on_scan_timeout,
+};
+
+static zmk_usb_bridge_status_t start_scan(const struct bt_le_scan_param *param, bool pairing_mode) {
+    int err;
+
+    if (!zmk_usb_bridge_ble_runtime_is_ready()) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
+    }
+
+    if (g_scan_active) {
+        if (g_pairing_mode == pairing_mode) {
+            return ZMK_USB_BRIDGE_STATUS_OK;
+        }
+
+        err = bt_le_scan_stop();
+        if (err != 0) {
+            LOG_ERR("bt_le_scan_stop before restart failed err=%d", err);
+            return (zmk_usb_bridge_status_t)err;
+        }
+        g_scan_active = false;
+    }
+
+    reset_candidate_cache();
+
+    err = bt_le_scan_start(param, NULL);
+    if (err != 0) {
+        LOG_ERR("bt_le_scan_start failed err=%d pairing=%d", err, pairing_mode);
+        return (zmk_usb_bridge_status_t)err;
+    }
+
+    g_scan_active = true;
+    g_pairing_mode = pairing_mode;
+    LOG_INF("scan started pairing=%d", pairing_mode);
+    return zmk_usb_bridge_ble_manager_post_simple_event(ZMK_USB_BRIDGE_EVENT_SCAN_STARTED);
+}
+
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_init(void) {
+    if (!g_scan_callbacks_registered) {
+        bt_le_scan_cb_register(&g_scan_callbacks);
+        g_scan_callbacks_registered = true;
+    }
+
+    g_scan_active = false;
+    g_pairing_mode = false;
+    reset_candidate_cache();
     LOG_INF("init");
     return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_start_pairing(void) {
-    LOG_INF("start pairing scan");
-    return ZMK_USB_BRIDGE_STATUS_OK;
+    return start_scan(BT_LE_SCAN_ACTIVE, true);
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_start_known_device(void) {
-    LOG_INF("start known-device scan");
-    return ZMK_USB_BRIDGE_STATUS_OK;
+    return start_scan(BT_LE_SCAN_PASSIVE, false);
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_stop(void) {
+    int err;
+
+    if (!g_scan_active) {
+        return ZMK_USB_BRIDGE_STATUS_OK;
+    }
+
+    err = bt_le_scan_stop();
+    if (err != 0) {
+        LOG_ERR("bt_le_scan_stop failed err=%d", err);
+        return (zmk_usb_bridge_status_t)err;
+    }
+
+    g_scan_active = false;
+    reset_candidate_cache();
     LOG_INF("stop");
     return ZMK_USB_BRIDGE_STATUS_OK;
 }

@@ -2,14 +2,86 @@
 
 #include "zmk_usb_bridge/ble_manager.h"
 
+#include <zephyr/bluetooth/conn.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(zub_ble_conn, LOG_LEVEL_INF);
 
 static uint16_t g_active_conn_handle;
+static bool g_callbacks_registered;
+
+static uint16_t conn_handle_of(const struct bt_conn *conn) {
+    if (conn == NULL) {
+        return 0;
+    }
+
+    return (uint16_t)bt_conn_index(conn) + 1U;
+}
+
+static zmk_usb_bridge_event_reason_t disconnect_reason_from_hci(uint8_t reason) {
+    switch (reason) {
+    case BT_HCI_ERR_CONN_TIMEOUT:
+        return ZMK_USB_BRIDGE_EVENT_REASON_DISCONNECTED_TIMEOUT;
+    default:
+        return ZMK_USB_BRIDGE_EVENT_REASON_DISCONNECTED_REMOTE;
+    }
+}
+
+static void on_connected(struct bt_conn *conn, uint8_t err) {
+    const uint16_t conn_handle = conn_handle_of(conn);
+
+    if (err != 0U) {
+        (void)zmk_usb_bridge_ble_connection_on_connect_failure(
+            ZMK_USB_BRIDGE_EVENT_REASON_CONNECT_CREATE_FAILED,
+            err
+        );
+        return;
+    }
+
+    (void)zmk_usb_bridge_ble_connection_on_connect_success(conn_handle);
+}
+
+static void on_disconnected(struct bt_conn *conn, uint8_t reason) {
+    const uint16_t conn_handle = conn_handle_of(conn);
+
+    (void)zmk_usb_bridge_ble_connection_on_disconnected(
+        conn_handle,
+        disconnect_reason_from_hci(reason),
+        reason
+    );
+}
+
+static void on_security_changed(
+    struct bt_conn *conn,
+    bt_security_t level,
+    enum bt_security_err err
+) {
+    const uint16_t conn_handle = conn_handle_of(conn);
+
+    ARG_UNUSED(level);
+
+    if (err == BT_SECURITY_ERR_SUCCESS) {
+        (void)zmk_usb_bridge_ble_connection_on_security_ready(conn_handle);
+        return;
+    }
+
+    (void)zmk_usb_bridge_ble_connection_on_security_failure(conn_handle, err);
+}
+
+static struct bt_conn_cb g_conn_callbacks = {
+    .connected = on_connected,
+    .disconnected = on_disconnected,
+    .security_changed = on_security_changed,
+};
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_init(void) {
     g_active_conn_handle = 0;
+
+    if (!g_callbacks_registered) {
+        bt_conn_cb_register(&g_conn_callbacks);
+        g_callbacks_registered = true;
+    }
+
     LOG_INF("init");
     return ZMK_USB_BRIDGE_STATUS_OK;
 }

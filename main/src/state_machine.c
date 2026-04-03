@@ -2,6 +2,7 @@
 
 #include "zmk_usb_bridge/ble_command.h"
 #include "zmk_usb_bridge/ble_manager.h"
+#include "zmk_usb_bridge/ble_runtime.h"
 #include "zmk_usb_bridge/bridge.h"
 #include "zmk_usb_bridge/recovery_ui.h"
 
@@ -45,6 +46,23 @@ static zmk_usb_bridge_status_t transition_to(
 
 static zmk_usb_bridge_status_t transition_to_state_only(zmk_usb_bridge_state_t next_state) {
     return set_state(next_state);
+}
+
+static zmk_usb_bridge_status_t transition_to_and_post(
+    zmk_usb_bridge_state_t next_state,
+    zmk_usb_bridge_ble_command_t command,
+    zmk_usb_bridge_event_type_t post_event_type
+) {
+    zmk_usb_bridge_status_t status = transition_to(next_state, command);
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        return status;
+    }
+
+    if (post_event_type == ZMK_USB_BRIDGE_EVENT_NONE) {
+        return ZMK_USB_BRIDGE_STATUS_OK;
+    }
+
+    return zmk_usb_bridge_ble_manager_post_simple_event(post_event_type);
 }
 
 static zmk_usb_bridge_status_t advance_startup_gate(void) {
@@ -127,6 +145,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_handle_event(const zmk_usb_
                        : ZMK_USB_BRIDGE_BLE_COMMAND_START_PAIRING_SCAN
         );
     case ZMK_USB_BRIDGE_EVENT_HID_READY:
+        g_has_bond = g_has_bond || zmk_usb_bridge_ble_runtime_has_bond();
         return transition_to_state_only(ZMK_USB_BRIDGE_STATE_CONNECTED);
     case ZMK_USB_BRIDGE_EVENT_DISCONNECTED: {
         zmk_usb_bridge_status_t status = zmk_usb_bridge_bridge_release_all();
@@ -178,7 +197,11 @@ zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_handle_event(const zmk_usb_
         if (status != ZMK_USB_BRIDGE_STATUS_OK) {
             return status;
         }
-        return transition_to(ZMK_USB_BRIDGE_STATE_BOND_ERASING, ZMK_USB_BRIDGE_BLE_COMMAND_ERASE_BONDS);
+        return transition_to_and_post(
+            ZMK_USB_BRIDGE_STATE_BOND_ERASING,
+            ZMK_USB_BRIDGE_BLE_COMMAND_ERASE_BONDS,
+            ZMK_USB_BRIDGE_EVENT_BOND_ERASE_COMPLETE
+        );
     }
     case ZMK_USB_BRIDGE_EVENT_BOND_ERASE_COMPLETE:
         g_has_bond = false;

@@ -1,6 +1,7 @@
 #include "zmk_usb_bridge/startup.h"
 
 #include "zmk_usb_bridge/ble_manager.h"
+#include "zmk_usb_bridge/ble_runtime.h"
 #include "zmk_usb_bridge/persist.h"
 #include "zmk_usb_bridge/recovery_ui.h"
 #include "zmk_usb_bridge/state_machine.h"
@@ -21,15 +22,54 @@ static bool check_status(const char *step, zmk_usb_bridge_status_t status) {
 }
 
 static zmk_usb_bridge_status_t post_startup_events(void) {
-    zmk_usb_bridge_status_t status = zmk_usb_bridge_ble_manager_post_simple_event(
+    zmk_usb_bridge_metadata_t metadata;
+    zmk_usb_bridge_status_t status;
+    bool metadata_fault = false;
+
+    if (!zmk_usb_bridge_ble_runtime_is_ready()) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
+    }
+
+    status = zmk_usb_bridge_persist_load_metadata(&metadata);
+    if (status == ZMK_USB_BRIDGE_STATUS_OK) {
+        LOG_INF("startup metadata loaded");
+    } else if (status == ZMK_USB_BRIDGE_STATUS_NOT_FOUND) {
+        LOG_INF("startup metadata not found");
+    } else {
+        LOG_WRN("startup metadata load failed status=%d; discarding", status);
+        status = zmk_usb_bridge_persist_discard_metadata();
+        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+            return status;
+        }
+        metadata_fault = true;
+    }
+
+    status = zmk_usb_bridge_ble_manager_post_simple_event(
         ZMK_USB_BRIDGE_EVENT_BLE_SYNCED
     );
     if (status != ZMK_USB_BRIDGE_STATUS_OK) {
         return status;
     }
 
-    return zmk_usb_bridge_ble_manager_post_simple_event(
-        ZMK_USB_BRIDGE_EVENT_PERSIST_READY_NO_BOND
+    status = zmk_usb_bridge_ble_manager_post_simple_event(
+        zmk_usb_bridge_ble_runtime_has_bond()
+            ? ZMK_USB_BRIDGE_EVENT_PERSIST_READY_WITH_BOND
+            : ZMK_USB_BRIDGE_EVENT_PERSIST_READY_NO_BOND
+    );
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        return status;
+    }
+
+    if (!metadata_fault) {
+        return ZMK_USB_BRIDGE_STATUS_OK;
+    }
+
+    return zmk_usb_bridge_ble_manager_post_event_with_payload(
+        ZMK_USB_BRIDGE_EVENT_METADATA_FAULT,
+        ZMK_USB_BRIDGE_EVENT_REASON_METADATA_CORRUPTED,
+        0,
+        0,
+        ZMK_USB_BRIDGE_CAPABILITY_NONE
     );
 }
 
