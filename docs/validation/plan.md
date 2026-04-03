@@ -26,7 +26,7 @@
 - unresolved private address を誤って recovery 扱いしないことの確認
 - peer address snapshot の診断有効性確認
 - bond 不整合を想定した recovery 導線確認
-- Zephyr Bluetooth callback と BLE manager queue の責務分離で実装複雑度を抑えられるか
+- Zephyr Bluetooth callback と BLE worker queue の責務分離で実装複雑度を抑えられるか
 - metadata 更新契機を `security 成立後` に置いても不足がないことの確認
 - post-connect bring-up を `connected` 入口条件としても reconnect 体感を損ねないことの確認
 - `Keyboard=1` を必須 report reference として扱って成立することの確認

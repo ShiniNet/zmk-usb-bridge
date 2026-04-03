@@ -1,5 +1,6 @@
 #include "zmk_usb_bridge/ble_scan.h"
 
+#include "zmk_usb_bridge/ble_connection.h"
 #include "zmk_usb_bridge/ble_manager.h"
 #include "zmk_usb_bridge/pairing_filter.h"
 #include "zmk_usb_bridge/ble_runtime.h"
@@ -42,6 +43,16 @@ static bool appearance_is_keyboard_family(uint16_t appearance) {
 
 static void reset_candidate_cache(void) {
     memset(g_candidate_cache, 0, sizeof(g_candidate_cache));
+}
+
+static void add_bond_to_accept_list(const struct bt_bond_info *info, void *user_data) {
+    int *err = user_data;
+
+    if (info == NULL || err == NULL || *err != 0) {
+        return;
+    }
+
+    *err = bt_le_filter_accept_list_add(&info->addr);
 }
 
 static zmk_usb_bridge_scan_candidate_state_t *find_candidate_slot(const bt_addr_le_t *addr) {
@@ -139,6 +150,30 @@ static void maybe_log_pairing_candidate(zmk_usb_bridge_scan_candidate_state_t *c
     );
 }
 
+static void maybe_start_connect(const bt_addr_le_t *addr, bool known_device) {
+    zmk_usb_bridge_status_t status;
+    zmk_usb_bridge_event_type_t event_type =
+        known_device ? ZMK_USB_BRIDGE_EVENT_KNOWN_DEVICE_FOUND
+                     : ZMK_USB_BRIDGE_EVENT_PAIRING_CANDIDATE_FOUND;
+
+    status = zmk_usb_bridge_ble_scan_stop();
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        LOG_WRN("scan stop before connect failed status=%d", status);
+        return;
+    }
+
+    status = zmk_usb_bridge_ble_connection_connect_peer(addr);
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        LOG_WRN("connect peer failed status=%d", status);
+        return;
+    }
+
+    status = zmk_usb_bridge_ble_manager_post_simple_event(event_type);
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        LOG_WRN("post candidate event failed status=%d", status);
+    }
+}
+
 static void on_scan_recv(const struct bt_le_scan_recv_info *info, struct net_buf_simple *buf) {
     zmk_usb_bridge_scan_candidate_state_t *candidate;
 
@@ -158,6 +193,11 @@ static void on_scan_recv(const struct bt_le_scan_recv_info *info, struct net_buf
 
     if (g_pairing_mode) {
         maybe_log_pairing_candidate(candidate);
+        if (candidate->reported) {
+            maybe_start_connect(info->addr, false);
+        }
+    } else if ((info->adv_props & BT_GAP_ADV_PROP_CONNECTABLE) != 0U) {
+        maybe_start_connect(info->addr, true);
     }
 
     LOG_DBG(
@@ -234,7 +274,24 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_start_pairing(void) {
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_start_known_device(void) {
-    return start_scan(BT_LE_SCAN_PASSIVE, false);
+    struct bt_le_scan_param param = *BT_LE_SCAN_PASSIVE;
+    int err;
+
+    err = bt_le_filter_accept_list_clear();
+    if (err != 0) {
+        LOG_ERR("accept list clear failed err=%d", err);
+        return (zmk_usb_bridge_status_t)err;
+    }
+
+    err = 0;
+    bt_foreach_bond(BT_ID_DEFAULT, add_bond_to_accept_list, &err);
+    if (err != 0) {
+        LOG_ERR("accept list add from bond failed err=%d", err);
+        return (zmk_usb_bridge_status_t)err;
+    }
+
+    param.options |= BT_LE_SCAN_OPT_FILTER_ACCEPT_LIST;
+    return start_scan(&param, false);
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_stop(void) {
@@ -251,6 +308,9 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_stop(void) {
     }
 
     g_scan_active = false;
+    if (!g_pairing_mode) {
+        (void)bt_le_filter_accept_list_clear();
+    }
     reset_candidate_cache();
     LOG_INF("stop");
     return ZMK_USB_BRIDGE_STATUS_OK;

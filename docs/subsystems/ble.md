@@ -123,7 +123,7 @@
 - keyboard、consumer、pointer の各 input report は、存在する場合に `report reference` 情報と characteristic handle の対応で識別する
 - report map 全体の厳密解釈より、`必要 input report の発見と subscribe` を優先する
 - HOG input notification の payload は `report_id` 付き全体 struct ではなく、該当 report の `body` 部分として扱う
-- report notification 受信後の USB bridge 変換は BLE callback で直接行わず、BLE manager queue へ渡して USB 側へ橋渡しする
+- report notification 受信後の USB bridge 変換は BLE callback で直接行わず、BLE 側の worker queue へ渡して USB 側へ橋渡しする
 - unknown report type や MVP 対象外 report はログ対象に留め、bridge の primary path を止めない
 - MVP の bring-up 完了条件に含める必須 role は `keyboard input` のみとする
 - reconnect 後は previous discovery cache を盲信せず、最低限の report availability を再確認する

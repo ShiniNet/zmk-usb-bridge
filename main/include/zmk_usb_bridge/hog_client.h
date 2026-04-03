@@ -5,10 +5,14 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <zephyr/bluetooth/conn.h>
 
 zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_init(void);
 zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_reset(void);
-zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_start_discovery(uint16_t conn_handle);
+zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_start_discovery(
+    struct bt_conn *conn,
+    uint16_t conn_handle
+);
 zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_set_profile(
     const zmk_usb_bridge_hog_profile_t *next_profile
 );
