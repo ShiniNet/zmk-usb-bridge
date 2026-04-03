@@ -1,0 +1,15 @@
+/ {
+    chosen {
+        zephyr,console = &zub_cdc_acm_uart;
+        zephyr,shell-uart = &zub_cdc_acm_uart;
+        zephyr,uart-mcumgr = &zub_cdc_acm_uart;
+        zephyr,bt-mon-uart = &zub_cdc_acm_uart;
+        zephyr,bt-c2h-uart = &zub_cdc_acm_uart;
+    };
+};
+
+&zephyr_udc0 {
+    zub_cdc_acm_uart: zub_cdc_acm_uart {
+        compatible = "zephyr,cdc-acm-uart";
+    };
+};

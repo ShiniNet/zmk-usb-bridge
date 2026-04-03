@@ -10,7 +10,7 @@ typedef struct {
 } zmk_usb_bridge_keyboard_body_t;
 
 typedef struct {
-    uint8_t keys[6];
+    uint16_t usage;
 } zmk_usb_bridge_consumer_body_t;
 
 typedef struct {

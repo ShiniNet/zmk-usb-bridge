@@ -1,0 +1,4 @@
+name: zub-usb-logging
+append:
+  EXTRA_CONF_FILE: zub-usb-logging.conf
+  EXTRA_DTC_OVERLAY_FILE: zub-usb-logging.overlay

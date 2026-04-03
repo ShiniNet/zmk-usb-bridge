@@ -18,8 +18,8 @@ PC とは USB HID デバイスとして接続し、キーボードとは BLE で
 ## 現在のステータス
 
 現在は要求定義と設計整理を進めつつ、`nRF52840 + ZMK v0.3.x 系 zephyr v3.5.0+zmk-fixes` 前提の実装骨格へ移行した段階です。
-まだ完成したファームウェアやハードウェア設計は含まれておらず、BLE と USB のスパイクを進める前段の状態です。
-現行のスケルトンには、初回ペアリング時だけ使う `local name allowlist` の設定枠も含めています。
+`Seeed XIAO nRF52840` 向けには `single HID interface + report IDs` の最小 USB HID 列挙スパイクを入れており、`Keyboard(1) + Consumer(2) + Mouse(3)` の複合 HID として build できます。
+BLE 側は引き続きスケルトン中心ですが、初回ペアリング時だけ使う `local name allowlist` の設定枠は既に含めています。
 
 ## 初期スコープ
 

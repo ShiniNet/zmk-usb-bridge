@@ -34,6 +34,7 @@
 
 - `Keyboard + Mouse` 複合 HID 列挙
 - `single HID interface + report IDs` の成立確認
+- 現行 build では `Seeed XIAO nRF52840` 向けに `Keyboard(1) + Consumer(2) + Mouse(3)` descriptor の列挙実装を投入済み
 - Keyboard HID 列挙
 - Pointing HID 列挙
 - `HKRO` keyboard report 動作確認
@@ -64,6 +65,8 @@
 - 利用者 fork 上の GitHub Actions だけで build artifact を取得できるか
 - `zephyr.uf2` 主導線だけで利用者が自力で書き込み可能か
 - `zephyr.hex` 補助導線が診断に役立つか
+- `zub-usb-logging` で Windows の `COM port` 監視だけで十分なログが取れるか
+- `config/dev-rtt.conf` を重ねた build で `RTT` runtime log が取れるか
 - `USB CDC ACM` を dev profile で許容したとき、bring-up を妨げないか
 
 ## Per-Validation Template

@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.20.0)
 
+set(ZMK_USB_BRIDGE_DEFAULT_USER_CONF
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/user.conf)
+
+if(DEFINED EXTRA_CONF_FILE)
+    set(EXTRA_CONF_FILE
+        "${ZMK_USB_BRIDGE_DEFAULT_USER_CONF};${EXTRA_CONF_FILE}")
+else()
+    set(EXTRA_CONF_FILE ${ZMK_USB_BRIDGE_DEFAULT_USER_CONF})
+endif()
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(zmk_usb_bridge)
 

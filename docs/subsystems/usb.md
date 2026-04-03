@@ -31,6 +31,14 @@
 - boot protocol は MVP では必須にせず、将来追加の余地だけ残す
 - 実装の第一案は `Zephyr USB device stack` 上で行う
 
+## Current Spike Status
+
+- `Seeed XIAO nRF52840` 向けに `Zephyr USB device stack` で最小列挙スパイクを実装済み
+- 現在の descriptor は `single HID interface + report IDs` で `Keyboard(1) + Consumer(2) + Mouse(3)` を提示する
+- Consumer Control は `16-bit single usage`、Pointer は `relative X/Y + wheel + AC Pan` を `8-bit` 幅で送る
+- bridge 内部では mouse 値を `int16_t` で保持し、USB 送信時に飽和させる
+- host 未構成時は report を破棄し、構成後に列挙確認と safe-state 送出を優先する
+
 ## Presentation Model
 
 - USB 側は 1 台の複合 HID デバイスとして見せる
