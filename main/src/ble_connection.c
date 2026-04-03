@@ -31,6 +31,33 @@ static zmk_usb_bridge_event_reason_t disconnect_reason_from_hci(uint8_t reason) 
     }
 }
 
+static const char *security_err_name(enum bt_security_err err) {
+    switch (err) {
+    case BT_SECURITY_ERR_SUCCESS:
+        return "success";
+    case BT_SECURITY_ERR_AUTH_FAIL:
+        return "auth_fail";
+    case BT_SECURITY_ERR_PIN_OR_KEY_MISSING:
+        return "pin_or_key_missing";
+    case BT_SECURITY_ERR_OOB_NOT_AVAILABLE:
+        return "oob_not_available";
+    case BT_SECURITY_ERR_AUTH_REQUIREMENT:
+        return "auth_requirement";
+    case BT_SECURITY_ERR_PAIR_NOT_SUPPORTED:
+        return "pair_not_supported";
+    case BT_SECURITY_ERR_PAIR_NOT_ALLOWED:
+        return "pair_not_allowed";
+    case BT_SECURITY_ERR_INVALID_PARAM:
+        return "invalid_param";
+    case BT_SECURITY_ERR_KEY_REJECTED:
+        return "key_rejected";
+    case BT_SECURITY_ERR_UNSPECIFIED:
+        return "unspecified";
+    default:
+        return "unknown";
+    }
+}
+
 static void on_connected(struct bt_conn *conn, uint8_t err) {
     const uint16_t conn_handle = conn_handle_of(conn);
 
@@ -209,7 +236,12 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_on_security_failure(
         (void)bt_conn_disconnect(g_active_conn, BT_HCI_ERR_AUTH_FAIL);
     }
 
-    LOG_INF("security failure conn_handle=%u status_code=%d", conn_handle, (int)status_code);
+    LOG_INF(
+        "security failure conn_handle=%u status_code=%d name=%s",
+        conn_handle,
+        (int)status_code,
+        security_err_name((enum bt_security_err)status_code)
+    );
     return zmk_usb_bridge_ble_manager_post_event_with_payload(
         ZMK_USB_BRIDGE_EVENT_CONNECT_FAILURE,
         ZMK_USB_BRIDGE_EVENT_REASON_SECURITY_FAILED,

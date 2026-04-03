@@ -92,6 +92,14 @@ static zmk_usb_bridge_status_t advance_startup_gate(void) {
     );
 }
 
+static void sync_runtime_bond_state(void) {
+    if (!zmk_usb_bridge_ble_runtime_is_ready()) {
+        return;
+    }
+
+    g_has_bond = zmk_usb_bridge_ble_runtime_has_bond();
+}
+
 zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_init(void) {
     zmk_usb_bridge_status_t status = zmk_usb_bridge_bridge_init();
     if (status != ZMK_USB_BRIDGE_STATUS_OK) {
@@ -117,6 +125,8 @@ zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_handle_event(const zmk_usb_
     if (event == NULL) {
         return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
     }
+
+    sync_runtime_bond_state();
 
     switch (event->type) {
     case ZMK_USB_BRIDGE_EVENT_USB_READY:
