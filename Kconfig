@@ -1,3 +1,5 @@
+source "Kconfig.zephyr"
+
 menu "ZMK USB Bridge"
 
 config ZMK_USB_BRIDGE_PAIRING_NAME_ALLOWLIST_ENABLED

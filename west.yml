@@ -4,21 +4,34 @@ manifest:
   remotes:
     - name: zephyrproject-rtos
       url-base: https://github.com/zephyrproject-rtos
+    - name: zmkfirmware
+      url-base: https://github.com/zmkfirmware
 
   projects:
     - name: zephyr
-      remote: zephyrproject-rtos
-      revision: v4.3.0
+      remote: zmkfirmware
+      revision: v3.5.0+zmk-fixes
+      clone-depth: 1
       import:
-        name-allowlist:
-          - cmsis
-          - hal_nordic
+        name-blocklist:
+          - ci-tools
+          - hal_altera
+          - hal_cypress
+          - hal_infineon
+          - hal_microchip
+          - hal_nxp
+          - hal_openisa
+          - hal_silabs
+          - hal_xtensa
+          - hal_st
+          - hal_ti
+          - loramac-node
           - mcuboot
-          - mbedtls
-          - segger
-          - tinycrypt
-          - littlefs
-          - zcbor
+          - mcumgr
+          - net-tools
+          - openthread
+          - edtt
+          - trusted-firmware-m
 
   self:
     path: ShiniNet/zmk-usb-bridge

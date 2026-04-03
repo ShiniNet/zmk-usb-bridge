@@ -11,18 +11,18 @@ Accepted
 - 無改造 ZMK キーボードとの相性を最優先したい
 - 本プロジェクトの主戦場は `BLE central + bond + privacy + reconnect` である
 - 認証済みモジュール前提で少量生産可能な構成にしたい
-- `Zephyr upstream` を正本にしたい
+- ZMK と近い Zephyr 系譜へ寄せたい
 
 ## Decision
 
 - MVP の実装基盤として `nRF52840` を採用する
 - 初期試作基板は `Seeed XIAO nRF52840` を第一候補とする
-- ソフトウェア基盤は `Zephyr upstream` を採用する
+- ソフトウェア基盤は Zephyr 系を採用し、build 基盤は `ZMK v0.3.x` と整合するものにする
 - 本番ハードでは `nRF52840` 認証済みモジュール搭載 custom board へ展開可能な構成を前提にする
 
 ## Options Considered
 
-- `nRF52840 + Zephyr upstream`
+- `nRF52840 + Zephyr 系 build 基盤`
 - `ESP32-S3 + ESP-IDF`
 
 ## Evaluation Criteria
@@ -44,5 +44,5 @@ Accepted
 
 ## Follow-up
 
-- BLE stack baseline を `Zephyr upstream Bluetooth host` 前提で更新する
+- BLE stack baseline を Zephyr 系 Bluetooth host 前提で更新する
 - build / distribution / artifact 方針を `west + UF2` 前提で更新する

@@ -7,10 +7,10 @@
 
 ## MVP Baseline
 
-- `zmk-usb-bridge` は独立した `Zephyr upstream` application として扱う
+- `zmk-usb-bridge` は独立した Zephyr application として扱う
 - workspace 正本は repository 同梱の `west.yml` とする
 - 試作ボードは `Seeed XIAO nRF52840`
-- `Zephyr upstream` は `v4.3.0` に pin する
+- build 基盤の `zephyr` は `zmkfirmware/zephyr v3.5.0+zmk-fixes` に pin する
 - 開発の主経路は `west build` とする
 - 利用者配布は `fork -> GitHub Actions -> artifact download -> local flashing` を標準導線にする
 - 利用者設定は repository 追跡下の設定フラグメントで扱う
@@ -19,14 +19,14 @@
 ## Local Workflow
 
 - source tree は Zephyr application として管理する
-- build は `west build -b xiao_ble/nrf52840` を主経路にする
+- build は `west build -b seeeduino_xiao_ble` を主経路にする
 - 初回依存取得は `west init -l ShiniNet/zmk-usb-bridge && west update` を第一候補にする
 - `UF2` 書き込みを試作主導線とし、必要に応じて外部 debug probe による `west flash` を補助導線にする
 - bring-up で詳細診断が必要な場合は、SWD probe を使った `J-Link` 系デバッグを許容する
 
 ## Version Policy
 
-- ローカルと GitHub Actions は同じ `Zephyr upstream v4.3.0` を使う
+- ローカルと GitHub Actions は同じ `zmkfirmware/zephyr v3.5.0+zmk-fixes` を使う
 - `latest` や working draft ではなく、supported release のタグ固定を使う
 - bugfix 取り込みは `v4.3.x -> v4.3.y` の明示更新で扱う
 - version 更新時は、文書、ローカル手順、CI 設定を同時に更新する
@@ -44,15 +44,15 @@
 ### Fragment Roles
 
 - `prj.conf`: project 共通既定値
-- `boards/<board>_<qualifiers>.conf`: board 固有既定値
-- `boards/<board>_<qualifiers>.overlay`: board 固有の devicetree 差分
+- `boards/<board>.conf`: board 固有既定値
+- `boards/<board>.overlay`: board 固有の devicetree 差分
 - `config/user.conf`: upstream が最小デフォルトを保持し、利用者が fork 上で編集する設定
 - `config/ci.conf`: CI 実行都合の差分だけを持つ設定
 
 ### Composition Rules
 
 - build 入力の正本は `prj.conf`、board conf、overlay、user conf とする
-- 標準順序は `prj.conf -> boards/xiao_ble_nrf52840.conf -> config/user.conf -> config/ci.conf` を第一候補にする
+- 標準順序は `prj.conf -> boards/seeeduino_xiao_ble.conf -> config/user.conf -> config/ci.conf` を第一候補にする
 - 利用者意味論を変える設定は `config/ci.conf` に置かない
 - CI でもローカルと同じ設定入力を使い、workflow 側で別の正本を増やさない
 

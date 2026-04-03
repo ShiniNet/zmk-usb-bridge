@@ -15,7 +15,7 @@
 - 単一の既知キーボードとの 1:1 接続を前提とする
 - 常時給電の USB ドングルとして運用する
 - 初期 MVP では `LaLapadGen2` を参照機として扱う
-- 実装基盤は `nRF52840 + Zephyr upstream` とする
+- 実装基盤は `nRF52840 + ZMK v0.3.x 系 zephyr v3.5.0+zmk-fixes` とする
 
 ## データフロー
 
@@ -59,11 +59,12 @@
 
 現時点では `nRF52840` を採用する。
 初期試作基板は `Seeed XIAO nRF52840` を基準にする。
-ソフトウェア基盤は `Zephyr upstream` を正本とする。
+ソフトウェア基盤は `ZMK v0.3.x` と整合する `zmkfirmware/zephyr v3.5.0+zmk-fixes` を build 基盤とする。
 
 この判断の理由は以下の通り。
 
 - ZMK と同じ Zephyr 系の設計前提へ寄せやすい
+- `ShiniNet/zmk-config-LalaPadGen2` と同じ `seeeduino_xiao_ble` board 名を使って検証しやすい
 - 本プロジェクトの主戦場である `BLE central + bond + privacy + reconnect` を扱いやすい
 - USB Device を備えた `nRF52840` 上で BLE と USB を同一 SoC に収められる
 - `Seeed XIAO nRF52840` を実験用ドングルとして流用しやすい

@@ -13,7 +13,7 @@
 - 初期リリースでポインティング入力を含める
 - BIOS / UEFI など低レイヤ環境での動作は初期必須ではない
 - BOM コストを優先し、開発工数は優先順位に含めない
-- 実装基盤は `nRF52840` 系と `Zephyr upstream` を前提にする
+- 実装基盤は `nRF52840` 系と `ZMK v0.3.x 系 zephyr v3.5.0+zmk-fixes` を前提にする
 
 ## MVP の具体的な対象
 
@@ -70,7 +70,7 @@
 - 利用者ごとの `pairing name allowlist` を repository 追跡下の設定ファイル編集だけで変更できること
 - 利用者に `menuconfig` や IDE 固有設定を必須にしないこと
 - build 入力が repository 上で追跡可能で、再現しやすいこと
-- ローカルと CI で同じ `Zephyr upstream` version を使い、固定 version で再現可能にすること
+- ローカルと CI で同じ `zephyr v3.5.0+zmk-fixes` を使い、固定 version で再現可能にすること
 - `Seeed XIAO nRF52840` 向けに、利用者が `UF2` を主導線として書き込めること
 
 ## 今後の試作で確定する項目

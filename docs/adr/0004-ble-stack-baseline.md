@@ -13,7 +13,7 @@ Accepted
 
 ## Decision
 
-- MVP の BLE stack 第一案は `Zephyr upstream Bluetooth host` とする
+- MVP の BLE stack 第一案は `ZMK v0.3.x` と整合する Zephyr 系 Bluetooth host とする
 - 必須機能の前提は以下とする
 - `Central` と `Observer` role を有効にする
 - bond は `CONFIG_BT_SETTINGS` を前提に settings 連携で保持する
@@ -23,7 +23,7 @@ Accepted
 
 ## Options Considered
 
-- `Zephyr upstream Bluetooth host`
+- `ZMK v0.3.x` と整合する Zephyr 系 Bluetooth host
 - `ESP-IDF NimBLE host + ESP controller`
 
 ## Evaluation Criteria

@@ -26,7 +26,7 @@
 ## MVP Baseline
 
 - 参照キーボードは `LaLapadGen2`
-- target stack の第一案は `Zephyr upstream Bluetooth host on nRF52840`
+- target stack の第一案は `zmkfirmware/zephyr v3.5.0+zmk-fixes` 系の Bluetooth host on nRF52840
 - 初回ペアリング時は、キーボード側で未登録プロファイルを選ぶことで ZMK 標準のペアリングモードへ入ってもらう
 - ドングル側は bond 未登録なら自動でペアリング探索を開始する
 - 既知デバイスへの再接続は bond 情報を基準に行う
@@ -57,7 +57,7 @@
 
 ## Target Stack Baseline
 
-- MVP 実装の第一案は `Zephyr upstream Bluetooth host` とする
+- MVP 実装の第一案は `zmkfirmware/zephyr v3.5.0+zmk-fixes` 系の Bluetooth host とする
 - 必須ロールは `Central` と `Observer` とする
 - bond 永続化は `CONFIG_BT_SETTINGS` を前提に Zephyr の settings 連携へ委譲する
 - privacy 機能は有効化し、BLE stack 側の解決を優先候補にする

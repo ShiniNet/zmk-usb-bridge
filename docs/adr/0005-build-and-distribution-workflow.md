@@ -7,7 +7,7 @@ Accepted
 ## Context
 
 - 試作速度を優先しつつ、利用者ごとの self-build 導線も必要
-- 開発ホストは `Zephyr upstream` application 前提に切り替える
+- 開発ホストは Zephyr application 前提に切り替える
 - 実機は `Seeed XIAO nRF52840`
 - 利用者ごとに `pairing name allowlist` を編集できるようにしたい
 - 中央 repository から恒久 firmware release を配る前提にはしたくない
