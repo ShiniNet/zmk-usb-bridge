@@ -53,30 +53,17 @@ typedef struct {
     size_t current_report_index;
     size_t pending_subscriptions;
     struct bt_conn *conn;
-    struct bt_gatt_discover_params discover_params;
+    struct bt_gatt_discover_params service_discover_params;
+    struct bt_gatt_discover_params report_discover_params;
+    struct bt_gatt_discover_params descriptor_discover_params;
     struct bt_gatt_read_params read_params;
     zmk_usb_bridge_hog_report_slot_t reports[ZMK_USB_BRIDGE_HOG_MAX_REPORTS];
 } zmk_usb_bridge_hog_context_t;
 
-typedef enum {
-    ZMK_USB_BRIDGE_HOG_STEP_NONE = 0,
-    ZMK_USB_BRIDGE_HOG_STEP_START_REPORT_DISCOVERY,
-    ZMK_USB_BRIDGE_HOG_STEP_START_DESCRIPTOR_DISCOVERY,
-    ZMK_USB_BRIDGE_HOG_STEP_START_REPORT_REF_READ,
-    ZMK_USB_BRIDGE_HOG_STEP_START_SUBSCRIPTIONS,
-    ZMK_USB_BRIDGE_HOG_STEP_FAIL_DISCOVERY,
-} zmk_usb_bridge_hog_step_t;
-
 static zmk_usb_bridge_hog_profile_t profile;
 static zmk_usb_bridge_hog_context_t g_ctx;
 static bool g_input_thread_started;
-static bool g_discovery_work_initialized;
 static struct k_thread g_input_thread;
-static struct k_work g_discovery_work;
-static zmk_usb_bridge_hog_step_t g_pending_step;
-static size_t g_pending_step_index;
-static zmk_usb_bridge_event_reason_t g_pending_fail_reason;
-static int32_t g_pending_fail_status_code;
 
 K_MSGQ_DEFINE(
     g_input_queue,
@@ -91,99 +78,6 @@ static zmk_usb_bridge_status_t start_report_discovery(void);
 static zmk_usb_bridge_status_t start_descriptor_discovery(size_t index);
 static zmk_usb_bridge_status_t start_report_ref_read(size_t index);
 static zmk_usb_bridge_status_t start_subscriptions(void);
-static void schedule_step(zmk_usb_bridge_hog_step_t step, size_t index);
-static void schedule_failure(
-    zmk_usb_bridge_event_reason_t reason,
-    int32_t status_code
-);
-
-static void clear_pending_step(void) {
-    g_pending_step = ZMK_USB_BRIDGE_HOG_STEP_NONE;
-    g_pending_step_index = 0U;
-    g_pending_fail_reason = ZMK_USB_BRIDGE_EVENT_REASON_NONE;
-    g_pending_fail_status_code = 0;
-}
-
-static void discovery_work_handler(struct k_work *work) {
-    zmk_usb_bridge_status_t status = ZMK_USB_BRIDGE_STATUS_OK;
-    const zmk_usb_bridge_hog_step_t step = g_pending_step;
-    const size_t index = g_pending_step_index;
-    const zmk_usb_bridge_event_reason_t fail_reason = g_pending_fail_reason;
-    const int32_t fail_status_code = g_pending_fail_status_code;
-
-    ARG_UNUSED(work);
-
-    clear_pending_step();
-
-    if (!g_ctx.discovery_active) {
-        return;
-    }
-
-    switch (step) {
-    case ZMK_USB_BRIDGE_HOG_STEP_START_REPORT_DISCOVERY:
-        status = start_report_discovery();
-        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
-            (void)zmk_usb_bridge_hog_client_fail_discovery(
-                g_ctx.conn_handle,
-                ZMK_USB_BRIDGE_EVENT_REASON_HID_SERVICE_MISSING,
-                status
-            );
-        }
-        break;
-    case ZMK_USB_BRIDGE_HOG_STEP_START_DESCRIPTOR_DISCOVERY:
-        status = start_descriptor_discovery(index);
-        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
-            (void)zmk_usb_bridge_hog_client_fail_discovery(
-                g_ctx.conn_handle,
-                ZMK_USB_BRIDGE_EVENT_REASON_HID_REPORT_MISSING,
-                status
-            );
-        }
-        break;
-    case ZMK_USB_BRIDGE_HOG_STEP_START_REPORT_REF_READ:
-        status = start_report_ref_read(index);
-        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
-            (void)zmk_usb_bridge_hog_client_fail_discovery(
-                g_ctx.conn_handle,
-                ZMK_USB_BRIDGE_EVENT_REASON_HID_REPORT_MISSING,
-                status
-            );
-        }
-        break;
-    case ZMK_USB_BRIDGE_HOG_STEP_START_SUBSCRIPTIONS:
-        (void)start_subscriptions();
-        break;
-    case ZMK_USB_BRIDGE_HOG_STEP_FAIL_DISCOVERY:
-        (void)zmk_usb_bridge_hog_client_fail_discovery(
-            g_ctx.conn_handle,
-            fail_reason,
-            fail_status_code
-        );
-        break;
-    case ZMK_USB_BRIDGE_HOG_STEP_NONE:
-    default:
-        break;
-    }
-}
-
-static void schedule_step(zmk_usb_bridge_hog_step_t step, size_t index) {
-    g_pending_step = step;
-    g_pending_step_index = index;
-    g_pending_fail_reason = ZMK_USB_BRIDGE_EVENT_REASON_NONE;
-    g_pending_fail_status_code = 0;
-    k_work_submit(&g_discovery_work);
-}
-
-static void schedule_failure(
-    zmk_usb_bridge_event_reason_t reason,
-    int32_t status_code
-) {
-    g_pending_step = ZMK_USB_BRIDGE_HOG_STEP_FAIL_DISCOVERY;
-    g_pending_step_index = 0U;
-    g_pending_fail_reason = reason;
-    g_pending_fail_status_code = status_code;
-    k_work_submit(&g_discovery_work);
-}
 
 static bool conn_matches(const struct bt_conn *conn) {
     return g_ctx.conn != NULL && conn == g_ctx.conn;
@@ -325,15 +219,10 @@ static zmk_usb_bridge_status_t advance_after_report_ref(void) {
     g_ctx.current_report_index++;
 
     if (g_ctx.current_report_index >= g_ctx.report_count) {
-        schedule_step(ZMK_USB_BRIDGE_HOG_STEP_START_SUBSCRIPTIONS, 0U);
-        return ZMK_USB_BRIDGE_STATUS_OK;
+        return start_subscriptions();
     }
 
-    schedule_step(
-        ZMK_USB_BRIDGE_HOG_STEP_START_DESCRIPTOR_DISCOVERY,
-        g_ctx.current_report_index
-    );
-    return ZMK_USB_BRIDGE_STATUS_OK;
+    return start_descriptor_discovery(g_ctx.current_report_index);
 }
 
 static void finalize_subscription_phase(void) {
@@ -509,10 +398,13 @@ static uint8_t on_report_descriptor_discovered(
             return BT_GATT_ITER_STOP;
         }
 
-        schedule_step(
-            ZMK_USB_BRIDGE_HOG_STEP_START_REPORT_REF_READ,
-            g_ctx.current_report_index
-        );
+        if (start_report_ref_read(g_ctx.current_report_index) != ZMK_USB_BRIDGE_STATUS_OK) {
+            (void)zmk_usb_bridge_hog_client_fail_discovery(
+                g_ctx.conn_handle,
+                ZMK_USB_BRIDGE_EVENT_REASON_HID_REPORT_MISSING,
+                ZMK_USB_BRIDGE_STATUS_INVALID_STATE
+            );
+        }
         return BT_GATT_ITER_STOP;
     }
 
@@ -550,7 +442,8 @@ static uint8_t on_report_characteristic_discovered(
 
     if (attr == NULL) {
         if (g_ctx.report_count == 0U) {
-            schedule_failure(
+            (void)zmk_usb_bridge_hog_client_fail_discovery(
+                g_ctx.conn_handle,
                 ZMK_USB_BRIDGE_EVENT_REASON_HID_REPORT_MISSING,
                 ZMK_USB_BRIDGE_STATUS_NOT_FOUND
             );
@@ -558,7 +451,13 @@ static uint8_t on_report_characteristic_discovered(
         }
 
         g_ctx.current_report_index = 0U;
-        schedule_step(ZMK_USB_BRIDGE_HOG_STEP_START_DESCRIPTOR_DISCOVERY, 0U);
+        if (start_descriptor_discovery(0U) != ZMK_USB_BRIDGE_STATUS_OK) {
+            (void)zmk_usb_bridge_hog_client_fail_discovery(
+                g_ctx.conn_handle,
+                ZMK_USB_BRIDGE_EVENT_REASON_HID_REPORT_MISSING,
+                ZMK_USB_BRIDGE_STATUS_INVALID_STATE
+            );
+        }
         return BT_GATT_ITER_STOP;
     }
 
@@ -606,7 +505,8 @@ static uint8_t on_hids_service_discovered(
     }
 
     if (attr == NULL) {
-        schedule_failure(
+        (void)zmk_usb_bridge_hog_client_fail_discovery(
+            g_ctx.conn_handle,
             ZMK_USB_BRIDGE_EVENT_REASON_HID_SERVICE_MISSING,
             ZMK_USB_BRIDGE_STATUS_NOT_FOUND
         );
@@ -624,7 +524,13 @@ static uint8_t on_hids_service_discovered(
         g_ctx.service_start_handle,
         g_ctx.service_end_handle
     );
-    schedule_step(ZMK_USB_BRIDGE_HOG_STEP_START_REPORT_DISCOVERY, 0U);
+    if (start_report_discovery() != ZMK_USB_BRIDGE_STATUS_OK) {
+        (void)zmk_usb_bridge_hog_client_fail_discovery(
+            g_ctx.conn_handle,
+            ZMK_USB_BRIDGE_EVENT_REASON_HID_SERVICE_MISSING,
+            ZMK_USB_BRIDGE_STATUS_INVALID_STATE
+        );
+    }
 
     return BT_GATT_ITER_STOP;
 }
@@ -632,14 +538,14 @@ static uint8_t on_hids_service_discovered(
 static zmk_usb_bridge_status_t start_service_discovery(void) {
     int err;
 
-    memset(&g_ctx.discover_params, 0, sizeof(g_ctx.discover_params));
-    g_ctx.discover_params.uuid = BT_UUID_HIDS;
-    g_ctx.discover_params.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE;
-    g_ctx.discover_params.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
-    g_ctx.discover_params.type = BT_GATT_DISCOVER_PRIMARY;
-    g_ctx.discover_params.func = on_hids_service_discovered;
+    memset(&g_ctx.service_discover_params, 0, sizeof(g_ctx.service_discover_params));
+    g_ctx.service_discover_params.uuid = BT_UUID_HIDS;
+    g_ctx.service_discover_params.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE;
+    g_ctx.service_discover_params.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
+    g_ctx.service_discover_params.type = BT_GATT_DISCOVER_PRIMARY;
+    g_ctx.service_discover_params.func = on_hids_service_discovered;
     LOG_INF("discover primary hids start=0x%04x end=0x%04x", 0x0001, 0xffff);
-    err = bt_gatt_discover(g_ctx.conn, &g_ctx.discover_params);
+    err = bt_gatt_discover(g_ctx.conn, &g_ctx.service_discover_params);
     if (err != 0) {
         LOG_WRN("start service discovery failed err=%d", err);
         return (zmk_usb_bridge_status_t)err;
@@ -651,18 +557,18 @@ static zmk_usb_bridge_status_t start_service_discovery(void) {
 static zmk_usb_bridge_status_t start_report_discovery(void) {
     int err;
 
-    memset(&g_ctx.discover_params, 0, sizeof(g_ctx.discover_params));
-    g_ctx.discover_params.uuid = BT_UUID_HIDS_REPORT;
-    g_ctx.discover_params.start_handle = g_ctx.service_start_handle + 1U;
-    g_ctx.discover_params.end_handle = g_ctx.service_end_handle;
-    g_ctx.discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
-    g_ctx.discover_params.func = on_report_characteristic_discovered;
+    memset(&g_ctx.report_discover_params, 0, sizeof(g_ctx.report_discover_params));
+    g_ctx.report_discover_params.uuid = BT_UUID_HIDS_REPORT;
+    g_ctx.report_discover_params.start_handle = g_ctx.service_start_handle + 1U;
+    g_ctx.report_discover_params.end_handle = g_ctx.service_end_handle;
+    g_ctx.report_discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+    g_ctx.report_discover_params.func = on_report_characteristic_discovered;
     LOG_INF(
         "discover hids report chars start=0x%04x end=0x%04x",
-        g_ctx.discover_params.start_handle,
-        g_ctx.discover_params.end_handle
+        g_ctx.report_discover_params.start_handle,
+        g_ctx.report_discover_params.end_handle
     );
-    err = bt_gatt_discover(g_ctx.conn, &g_ctx.discover_params);
+    err = bt_gatt_discover(g_ctx.conn, &g_ctx.report_discover_params);
     if (err != 0) {
         LOG_WRN("start report discovery failed err=%d", err);
         return (zmk_usb_bridge_status_t)err;
@@ -685,20 +591,20 @@ static zmk_usb_bridge_status_t start_descriptor_discovery(size_t index) {
     }
 
     g_ctx.current_report_index = index;
-    memset(&g_ctx.discover_params, 0, sizeof(g_ctx.discover_params));
-    g_ctx.discover_params.uuid = NULL;
-    g_ctx.discover_params.start_handle = slot->binding.value_handle + 1U;
-    g_ctx.discover_params.end_handle = slot->end_handle;
-    g_ctx.discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
-    g_ctx.discover_params.func = on_report_descriptor_discovered;
+    memset(&g_ctx.descriptor_discover_params, 0, sizeof(g_ctx.descriptor_discover_params));
+    g_ctx.descriptor_discover_params.uuid = NULL;
+    g_ctx.descriptor_discover_params.start_handle = slot->binding.value_handle + 1U;
+    g_ctx.descriptor_discover_params.end_handle = slot->end_handle;
+    g_ctx.descriptor_discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
+    g_ctx.descriptor_discover_params.func = on_report_descriptor_discovered;
     LOG_INF(
         "discover report[%u] descriptors start=0x%04x end=0x%04x value_handle=0x%04x",
         (unsigned int)index,
-        g_ctx.discover_params.start_handle,
-        g_ctx.discover_params.end_handle,
+        g_ctx.descriptor_discover_params.start_handle,
+        g_ctx.descriptor_discover_params.end_handle,
         slot->binding.value_handle
     );
-    err = bt_gatt_discover(g_ctx.conn, &g_ctx.discover_params);
+    err = bt_gatt_discover(g_ctx.conn, &g_ctx.descriptor_discover_params);
     if (err != 0) {
         LOG_WRN("start descriptor discovery failed err=%d index=%u", err, (unsigned int)index);
         return (zmk_usb_bridge_status_t)err;
@@ -826,7 +732,6 @@ static zmk_usb_bridge_status_t start_subscriptions(void) {
 zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_init(void) {
     memset(&profile, 0, sizeof(profile));
     memset(&g_ctx, 0, sizeof(g_ctx));
-    clear_pending_step();
 
     if (!g_input_thread_started) {
         k_tid_t tid = k_thread_create(
@@ -849,11 +754,6 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_init(void) {
         g_input_thread_started = true;
     }
 
-    if (!g_discovery_work_initialized) {
-        k_work_init(&g_discovery_work, discovery_work_handler);
-        g_discovery_work_initialized = true;
-    }
-
     LOG_INF("init");
     return ZMK_USB_BRIDGE_STATUS_OK;
 }
@@ -861,10 +761,6 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_init(void) {
 zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_reset(void) {
     memset(&profile, 0, sizeof(profile));
     k_msgq_purge(&g_input_queue);
-    if (g_discovery_work_initialized) {
-        (void)k_work_cancel(&g_discovery_work);
-    }
-    clear_pending_step();
 
     if (g_ctx.conn != NULL) {
         bt_conn_unref(g_ctx.conn);
