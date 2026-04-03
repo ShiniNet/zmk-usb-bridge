@@ -16,7 +16,7 @@
 - 継続再接続時のバックオフ挙動
 - `connectable + HID service` filter の成立確認
 - `keyboard appearance` 追加後も候補検出が成立することの確認
-- scan 継続 + connect attempt backoff の成立確認
+- explicit scan 方式で `scan stop -> connect attempt -> fail/disconnect で scan restart` が安定して回ることの確認
 - 既知広告の再観測で即 connect attempt へ戻ることの確認
 - `fast reconnect` から `backoff reconnect` へ移る閾値の妥当性確認
 - metadata-only 破損からの自動回復確認

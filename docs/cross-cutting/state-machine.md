@@ -38,7 +38,7 @@
 - 保存済み bond があれば既知キーボードへの自動再接続を試みる
 - 保存済み bond が無ければ自動で `pairing_scan` に入る
 - 接続断時は USB 側を安全状態に戻した上で自動再接続へ入る
-- 再接続は停止せず、scan は継続したまま connect attempt 間隔だけを短周期フェーズから長周期フェーズへ移す
+- 再接続は停止せず、接続試行中だけ scan を止め、失敗または切断後は scan を再開した上で connect attempt 間隔だけを短周期フェーズから長周期フェーズへ移す
 - 補助メタデータ破損だけでは `recovery_required` に入らず、metadata discard 後に通常の既知デバイス再接続へ戻す
 - 既存 bond の不整合が確定した場合のみ `recovery_required` に入る
 - unresolved private address の再検出失敗だけでは `recovery_required` に入らない
@@ -77,12 +77,14 @@
 
 - bond 未登録時の自動ペアリング探索
 - `connectable + HID service + keyboard appearance` を最低条件にした scan を継続する
+- 候補発見時は `scan stop -> connect attempt` へ進み、失敗時は scan を再開する
 - 接続成立だけでは採用せず、`connecting` 内の adopt 前検証を通過した対象だけを採用する
 
 ### `scanning_known_device`
 
 - bond 済みデバイスの広告を探索する
-- scan 自体は継続し、接続試行の許可は bond / identity 条件で絞る
+- 接続試行の許可は bond / identity 条件で絞る
+- scan は待機中に継続し、connect attempt の直前だけ停止する
 - identity 解決できない private address を見つけても、即 `recovery_required` へは進まず scan 継続を優先する
 - 既知広告を新たに観測した時点では、backoff 状態を持ち越さず `connecting` へ進める
 
@@ -100,7 +102,7 @@
 ### `reconnecting_fast`
 
 - 切断直後の短周期再接続フェーズ
-- scan は継続し、connect attempt を短い間隔で許可する
+- scan は待機中に再開し、connect attempt を短い間隔で許可する
 - 既知広告を再観測した直後も、このフェーズへ戻してよい
 - ボタン短押しでこの状態へ戻し、attempt schedule を初期化してよい
 - 暫定仕様では `即時 + 0.5s + 1s + 2s` の 4 回までをこのフェーズに含める
@@ -108,7 +110,7 @@
 ### `reconnecting_backoff`
 
 - 相手が見えているのに connect attempt が連続失敗した場合の低負荷再接続フェーズ
-- scan は継続し、connect attempt を長めの間隔で許可する
+- scan は待機中に再開し、connect attempt を長めの間隔で許可する
 - 暫定仕様では attempt 間隔を `5s -> 10s cap` とする
 
 ### `recovery_required`
@@ -136,7 +138,7 @@
 - stuck key を起こす遷移が残っていないか
 - 想定外の順序でも復旧可能か
 - 継続再接続がホストや SoC に悪影響を与えないか
-- scan 継続 + attempt backoff の組み合わせで reconnect 体感が悪化しないか
+- `scan restart + attempt backoff` の組み合わせで reconnect 体感が悪化しないか
 - metadata-only 破損で `recovery_required` へ誤遷移しないか
 
 ## Related Documents

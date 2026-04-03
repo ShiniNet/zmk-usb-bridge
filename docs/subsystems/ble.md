@@ -32,7 +32,8 @@
 - 既知デバイスへの再接続は bond 情報を基準に行う
 - unbonded pairing scan では `connectable advertisement` と `HID service の存在` を最低条件にする
 - bonded reconnect では bond / identity を主キーにし、広告名は認証に使わない
-- scan 自体は止めず、connect attempt にだけ backoff をかける
+- scan は `接続試行中だけ停止し、失敗または切断後にすぐ再開する` を基本とする
+- connect attempt には backoff をかける
 
 ## External Interfaces
 
@@ -47,7 +48,7 @@
 ### 決定済み
 
 - 初回 pairing、既知 peer reconnect、privacy、metadata の原則は本書の各専用節を正本とする
-- 特に識別の正本は `bond / identity`、allowlist は `初回 pairing の補助条件`、再接続は `scan 継続 + connect attempt backoff` を基本とする
+- 特に識別の正本は `bond / identity`、allowlist は `初回 pairing の補助条件`、再接続は `scan restart + connect attempt backoff` を基本とする
 
 ### 未決定
 
@@ -72,9 +73,10 @@
 - 実装の第一案では以下の順で初期化する
 1. settings backend 準備
 2. `bt_enable()`
-3. app metadata 読み出し
-4. bond 読み出し
-5. BLE manager queue / worker 準備
+3. Bluetooth settings 読み出し
+4. app metadata 読み出し
+5. bond 読み出し
+6. BLE manager queue / worker 準備
 - scan / connect 開始は Bluetooth stack 初期化完了後にのみ許可する
 - host 初期化失敗や再初期化時は BLE manager を `boot 相当` に戻し、USB 側 safe state を維持したまま再開機会を待つ
 
@@ -84,6 +86,7 @@
 - scan result、connect result、disconnect、security result はすべて `BLE internal event` として queue 化する
 - `state-machine.md` の状態遷移は、この BLE manager queue を唯一の更新入口とする
 - USB への release 要求は BLE callback から直接行わず、状態遷移処理側で発火する
+- Zephyr の explicit central scan を前提に、`bt_conn_le_create()` の直前には scan を停止し、接続失敗または切断後に scan を再開する
 
 ### Post-Connect HID Bring-up
 
@@ -122,6 +125,7 @@
 - local name はあればログや補助判断に使ってよいが、MVP では必須条件にしない
 - `name allowlist` は optional config とし、設定されている場合だけ `local name` 一致を補助条件に加えてよい
 - 利用者には対象キーボードだけを pairing mode にしてもらう
+- 接続候補を見つけたら `scan stop -> connect attempt` へ進み、失敗したら scan を再開する
 
 ### Bonded Reconnect Scan
 
@@ -129,7 +133,7 @@
 - 既知 bond に対応する相手だけを接続候補にする
 - local name や RSSI は認証条件にしない
 - privacy 解決済み identity を candidate 判定に使える場合はそれを最優先する
-- 既知デバイスの広告を新たに観測した時点では、backoff 状態を持ち越さず即 connect attempt 候補に戻す
+- 既知デバイスの広告を新たに観測した時点では、backoff 状態を持ち越さず即 `scan stop -> connect attempt` 候補に戻す
 
 ## Discovery / Identification
 
@@ -174,17 +178,18 @@
 
 - 接続断や起動時の再接続は自動で開始する
 - 基本方針は `継続再接続` とする
-- scan 自体は既知デバイス不在時を含めて継続する
-- 既知デバイス広告を観測した時点では、まず即 connect attempt を許可する
+- scan は `接続試行中だけ停止し、それ以外の待機時間では再開する` 方針とする
+- 既知デバイス広告を観測した時点では、まず即 `scan stop -> connect attempt` を許可する
 - 起動直後、切断直後、または `既知デバイス広告の再観測直後` は `fast reconnect` として短い間隔で接続を試みる
 - `backoff reconnect` は `相手が見えているのに connect attempt が連続失敗する場合` にだけ使う
-- 長時間未接続でも scan は止めず、次に広告が見えた瞬間に即 connect attempt へ戻れる設計を目指す
+- 長時間未接続でも、接続試行中以外は scan を再開し続け、次に広告が見えた瞬間に即 connect attempt へ戻れる設計を目指す
 - MVP の第一案では connect attempt の目安を `即時 + 0.5s + 1s + 2s` とし、その後に失敗が続く場合だけ `5s -> 10s cap` の backoff へ移る
 - button 短押し時は backoff 状態をリセットし、`fast reconnect` へ戻してよい
 
 ## Failure Handling
 
 - 接続失敗時はまず `fast reconnect` を行い、連続失敗時のみ再接続バックオフへ移行する
+- 接続失敗時は `scan restart` を優先し、次の connect attempt だけを delay 制御する
 - 誤った対象へ接続するリスクは `対象キーボードのみを pairing mode にする` 運用で最小化する
 - 誤採用リスクは `connectable + HID service + keyboard appearance` と post-connect validation でさらに下げる
 - 補助メタデータの欠損、破損、version 不一致は `metadata discard + 再生成待ち` として扱う

@@ -26,7 +26,7 @@
 5. bond があれば既知の対象キーボードを探索し接続する
 6. キーボード入力とポインティング入力を受け取る
 7. USB HID レポートへ変換して PC に送る
-8. 切断時は USB 側を安全状態に戻し、再接続試行を継続する
+8. 切断時は USB 側を安全状態に戻し、scan restart を伴う再接続試行を継続する
 
 ## コンポーネント
 
@@ -94,6 +94,7 @@
 
 - USB HID descriptor をどう最小構成にするか
 - BLE 再接続の `fast -> backoff` 移行条件と attempt 間隔をどう定めるか
+- explicit scan 方式での `scan stop -> connect -> fail/disconnect で scan restart` をどこまで単純に実装するか
 - private address / directed advertisement を含む候補判定をどこまで吸収するか
 - `BLE stack 管理 bond` とアプリ補助メタデータの境界を実装でどう分離するか
 - 1 ボタン + RGB LED の UI をどこまで単純化するか

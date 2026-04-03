@@ -21,7 +21,7 @@ Accepted for MVP
 - pairing 探索中は、その場で最初に接続成立した相手を即採用せず、post-connect validation を通過した相手を採用する
 - 既知デバイス再接続では bond 情報を主キーにして同名別個体を区別する
 - local name は補助情報に留め、認証の主条件にしない
-- scan 自体は継続し、connect attempt にだけ backoff をかける
+- scan は `接続試行中だけ停止し、失敗または切断後にすぐ再開する` 方針とし、connect attempt に backoff をかける
 - 厳密な ZMK 機種判別は MVP では必須にしない
 - `LaLapadGen2` 前提の MVP では、post-connect validation の一部として期待 report reference を確認してよい
 
@@ -47,7 +47,7 @@ Accepted for MVP
 - MVP の対象を `LaLapadGen2` に絞ることで、一般化より先に実利用に近い検証を進められる
 - local name を主キーにしないため、名前変更や同名機器に引きずられにくい
 - allowlist を補助条件に限定することで、user control を残しつつ bond 後の識別正本を汚さずに済む
-- scan を止めないため復帰機会は維持しやすいが、attempt backoff 定数は試作で妥当性確認が必要になる
+- 接続試行のたびに scan stop / restart が入るため Zephyr 実装には落とし込みやすいが、attempt backoff 定数は試作で妥当性確認が必要になる
 - 将来の汎用化では advertisement filter や接続後確認条件を追加する余地が残る
 
 ## Follow-up

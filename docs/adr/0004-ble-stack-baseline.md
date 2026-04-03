@@ -8,7 +8,7 @@ Accepted
 
 - MVP の試作基盤は `nRF52840`、具体的には `Seeed XIAO nRF52840` を前提にしている
 - BLE central / observer と USB device の両立が必要
-- bond 主体の known-device reconnect、privacy、scan 継続中の connect attempt が必要
+- bond 主体の known-device reconnect、privacy、explicit scan ベースの reconnect 制御が必要
 - `private address` の解決は、可能な限り stack に委ねたい
 
 ## Decision
@@ -19,6 +19,7 @@ Accepted
 - bond は `CONFIG_BT_SETTINGS` を前提に settings 連携で保持する
 - privacy 機能を有効にする
 - known-peer reconnect では filter accept list または bond-aware reconnect path を優先候補にする
+- explicit scan 方式では `known peer advertisement observed -> scan stop -> connect attempt -> fail/disconnect で scan restart` を基本シーケンスとする
 - app metadata は stack の bond と分離して保持する
 
 ## Options Considered
