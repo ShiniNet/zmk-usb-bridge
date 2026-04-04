@@ -1,0 +1,14 @@
+/ {
+    aliases {
+        sw0 = &zub_recovery_button;
+    };
+
+    buttons {
+        compatible = "gpio-keys";
+
+        zub_recovery_button: button_0 {
+            gpios = <&xiao_d 0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            label = "ZMK USB Bridge Recovery Button";
+        };
+    };
+};

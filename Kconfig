@@ -16,4 +16,19 @@ config ZMK_USB_BRIDGE_PAIRING_NAME_ALLOWLIST
       Comma-separated exact-match local names that are accepted during
       unbonded pairing when the allowlist is enabled.
 
+config ZMK_USB_BRIDGE_RECOVERY_BUTTON_DEBOUNCE_MS
+    int "Recovery button debounce time (ms)"
+    default 30
+    range 5 500
+    help
+      Debounce time used for the external recovery button input.
+
+config ZMK_USB_BRIDGE_RECOVERY_BUTTON_LONG_PRESS_MS
+    int "Recovery button long-press time (ms)"
+    default 3000
+    range 1000 10000
+    help
+      Hold time required before the external recovery button triggers
+      bond erase and returns the bridge to pairing scan.
+
 endmenu

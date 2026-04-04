@@ -35,11 +35,12 @@
 - 状態表示には RGB の `USRLED` を使う
 - `Seeed XIAO BLE` では board DTS が持つ `led0(red) / led1(blue) / led2(green)` を `USRLED` として使う
 - ボンド削除はボタン長押しで行う
+- 現行 board overlay では外部 recovery button を `XIAO D0` の active-low / pull-up 入力として扱う
+- 長押し時間の現行デフォルトは `3000 ms`
 - USB 状態に応じた専用 LED パターンは MVP では増やさず、BLE / recovery 状態中心で表現する
 
 ### 未決定
 
-- 長押し時間
 - 接続中を常時点灯にするか低輝度にするか
 
 ## Proposed Controls
@@ -88,7 +89,6 @@
 
 ## Open Questions
 
-- 長押し時間を何秒にするか
 - 接続中を常時点灯にするか、低輝度や消灯を許容するか
 
 ## Validation Needed

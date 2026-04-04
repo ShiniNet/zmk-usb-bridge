@@ -94,6 +94,10 @@ zmk_usb_bridge_status_t zmk_usb_bridge_startup_run(void) {
         return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
     }
 
+    if (!check_status("recovery_ui_enable_inputs", zmk_usb_bridge_recovery_ui_enable_inputs())) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
+    }
+
     if (!check_status("state_machine_start", zmk_usb_bridge_state_machine_start())) {
         return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
     }
