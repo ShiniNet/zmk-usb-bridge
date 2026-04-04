@@ -11,6 +11,11 @@ static bool g_ready;
 static size_t g_bond_count;
 static bool g_auth_info_registered;
 
+typedef struct {
+    const bt_addr_le_t *peer;
+    bool found;
+} zmk_usb_bridge_bond_lookup_t;
+
 static void count_bond(const struct bt_bond_info *info, void *user_data) {
     size_t *count = user_data;
 
@@ -18,6 +23,18 @@ static void count_bond(const struct bt_bond_info *info, void *user_data) {
 
     if (count != NULL) {
         (*count)++;
+    }
+}
+
+static void find_bond(const struct bt_bond_info *info, void *user_data) {
+    zmk_usb_bridge_bond_lookup_t *lookup = user_data;
+
+    if (info == NULL || lookup == NULL || lookup->peer == NULL || lookup->found) {
+        return;
+    }
+
+    if (bt_addr_le_eq(&info->addr, lookup->peer)) {
+        lookup->found = true;
     }
 }
 
@@ -110,6 +127,20 @@ bool zmk_usb_bridge_ble_runtime_is_ready(void) {
 
 bool zmk_usb_bridge_ble_runtime_has_bond(void) {
     return g_bond_count > 0U;
+}
+
+bool zmk_usb_bridge_ble_runtime_is_peer_bonded(const bt_addr_le_t *peer) {
+    zmk_usb_bridge_bond_lookup_t lookup = {
+        .peer = peer,
+        .found = false,
+    };
+
+    if (!g_ready || peer == NULL) {
+        return false;
+    }
+
+    bt_foreach_bond(BT_ID_DEFAULT, find_bond, &lookup);
+    return lookup.found;
 }
 
 size_t zmk_usb_bridge_ble_runtime_bond_count(void) {

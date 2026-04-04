@@ -33,6 +33,7 @@ BLE、USB、Recovery UI など、機能単位の詳細設計を置く。
 試作、検証観点、合否基準、結果記録の入口を置く。
 
 - `validation/plan.md`
+- `validation/status.md`
 - `validation/debugging.md`
 
 ### `adr/`

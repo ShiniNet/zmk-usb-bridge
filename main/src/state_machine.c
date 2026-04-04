@@ -128,6 +128,17 @@ zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_handle_event(const zmk_usb_
 
     sync_runtime_bond_state();
 
+    if (g_state == ZMK_USB_BRIDGE_STATE_RECOVERY_REQUIRED) {
+        switch (event->type) {
+        case ZMK_USB_BRIDGE_EVENT_CONNECT_FAILURE:
+        case ZMK_USB_BRIDGE_EVENT_DISCONNECTED:
+        case ZMK_USB_BRIDGE_EVENT_BOND_MISMATCH:
+            return ZMK_USB_BRIDGE_STATUS_OK;
+        default:
+            break;
+        }
+    }
+
     switch (event->type) {
     case ZMK_USB_BRIDGE_EVENT_USB_READY:
         g_usb_ready = true;

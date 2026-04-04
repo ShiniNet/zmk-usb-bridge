@@ -7,6 +7,7 @@ LOG_MODULE_REGISTER(zub_ble_reconn, LOG_LEVEL_INF);
 
 enum {
     ZMK_USB_BRIDGE_FAST_ATTEMPT_COUNT = 4,
+    ZMK_USB_BRIDGE_FRESH_OBSERVATION_SETTLE_MS = 750,
 };
 
 static const int32_t g_fast_delay_ms[ZMK_USB_BRIDGE_FAST_ATTEMPT_COUNT] = {0, 500, 1000, 2000};
@@ -126,8 +127,11 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_note_known_peer_seen(void) 
         g_reconnect.mode = ZMK_USB_BRIDGE_RECONNECT_MODE_FAST;
         g_reconnect.fast_attempt_index = 0;
         g_reconnect.backoff_delay_ms = 5000;
-        schedule_attempt_in(0);
-        LOG_INF("fresh re-observation -> fast reconnect");
+        schedule_attempt_in(ZMK_USB_BRIDGE_FRESH_OBSERVATION_SETTLE_MS);
+        LOG_INF(
+            "fresh re-observation -> fast reconnect after settle_ms=%d",
+            ZMK_USB_BRIDGE_FRESH_OBSERVATION_SETTLE_MS
+        );
     }
 
     return ZMK_USB_BRIDGE_STATUS_OK;

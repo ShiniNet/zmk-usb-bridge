@@ -148,7 +148,8 @@
 - 既知 bond に対応する相手だけを接続候補にする
 - local name 取得や scan response は不要とし、local name や RSSI は認証条件にしない
 - privacy 解決済み identity を candidate 判定に使える場合はそれを最優先する
-- `peer invisible` になった後の fresh re-observation では、backoff 状態を持ち越さず即 `scan stop -> connect attempt` 候補に戻す
+- `peer invisible` になった後の fresh re-observation では、backoff 状態を持ち越さず `fast reconnect` へ戻す
+- fresh re-observation 直後の最初の reconnect attempt には短い stabilization delay を挟んでよい
 
 ## Discovery / Identification
 
@@ -197,14 +198,20 @@
 - scan は `接続試行中だけ停止し、それ以外の待機時間では再開する` 方針とする
 - `fast reconnect` への入口は `起動直後`、`切断直後`、`ボタン短押し`、または `既知 peer を見失った後の fresh re-observation` とする
 - `fast reconnect` の attempt schedule は `即時 + 0.5s + 1s + 2s` の 4 回を基準とする
+- known-device reconnect で `bonded` peer へ接続できた場合は、`bt_conn_set_security(BT_SECURITY_L2)` を必ず即時要求するとは限らず、GATT/ATT access で必要になった時点の security upgrade に委ねてよい
+- 現行実装では bonded reconnect 後の HOG discovery を先に開始し、`CONFIG_BT_ATT_RETRY_ON_SEC_ERR` を活かして必要時だけ security upgrade させる
 - connect failure の連続回数は `bt_conn_le_create()` 失敗、`connected` 後の security failure、または `HID ready` 前の bring-up failure を 1 回として数える
 - `backoff reconnect` は `同じ known peer が visible のまま 4 回連続失敗した場合` にだけ入る
 - `backoff reconnect` の attempt schedule は `5s`、以後 `10s cap` を繰り返す
 - known peer が `2s` 以上観測されなかった場合は `peer invisible` とみなし、pending reconnect delay を破棄して `scanning_known_device` 相当の待機へ戻る
 - `fresh re-observation` は `peer invisible` になった後に最初の既知広告を観測した瞬間だけを指し、広告 packet ごとには発火させない
+- `fresh re-observation` の直後は、peer 復帰直後の不安定な connect を避けるため短い stabilization delay を挟んでから最初の reconnect attempt を開始してよい
 - 長時間未接続でも、接続試行中以外は scan を再開し続け、`fresh re-observation` 時に即 connect attempt へ戻れる設計を目指す
 - button 短押し時は visible 状態と failure streak をリセットし、`fast reconnect` へ戻してよい
 - `bond/auth mismatch` が確定した場合は `backoff reconnect` を継続せず、`recovery_required` へ送る
+- known-device reconnect 中に `BT_SECURITY_ERR_AUTH_FAIL`、`BT_SECURITY_ERR_PIN_OR_KEY_MISSING`、または `BT_SECURITY_ERR_UNSPECIFIED` が出た場合は stale bond 候補として扱う
+- stale bond 候補は 1 回では即確定せず、同種 failure が連続 2 回起きたときに `bond/auth mismatch` として `recovery_required` へ送る
+- `Run ID: 20260404_162314` では、初回 pairing と切断後再接続の両方で `connected` と入力反映まで到達している
 
 ## Failure Handling
 
@@ -216,6 +223,7 @@
 - 補助メタデータの欠損、破損、version 不一致は `metadata discard + 再生成待ち` として扱う
 - local bond が読めない、または存在しない場合は既知デバイス扱いをやめて `pairing_scan` へ戻す
 - local bond はあるが認証や暗号化で不整合が確定した場合は `recovery_required` とし、ボタン長押しによる bond erase 導線を用意する
+- security failure 後の切断理由は `AUTH_FAIL` 固定にせず、追加の peer-side bond 劣化を避けるため通常 terminate 理由を使う
 - 接続断時は USB 側へ release 処理を要求して stuck input を防ぐ
 - bond erase は `BLE bond` と `app metadata` の両方成功時だけ完了扱いとし、中途半端な消去状態を成功として扱わない
 

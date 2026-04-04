@@ -822,6 +822,11 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_start_discovery(
         return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
     }
 
+    if (g_ctx.discovery_active && g_ctx.conn_handle == conn_handle) {
+        LOG_INF("start_discovery ignored conn_handle=%u already active", conn_handle);
+        return ZMK_USB_BRIDGE_STATUS_OK;
+    }
+
     status = zmk_usb_bridge_hog_client_reset();
     if (status != ZMK_USB_BRIDGE_STATUS_OK) {
         return status;
@@ -885,6 +890,10 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_fail_discovery(
         conn_handle,
         zmk_usb_bridge_hog_client_capability_flags()
     );
+}
+
+bool zmk_usb_bridge_hog_client_discovery_active(uint16_t conn_handle) {
+    return g_ctx.discovery_active && g_ctx.conn_handle == conn_handle;
 }
 
 bool zmk_usb_bridge_hog_client_ready(void) {

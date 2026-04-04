@@ -4,6 +4,12 @@
 
 - 未確定事項を試作で潰し、設計判断へ戻せる形で記録する
 
+## Current Checkpoint
+
+- `Run ID: 20260404_162314` で `LaLapadGen2` の初回 pairing と切断後再接続が成功
+- この時点の bonded reconnect は `explicit security request` を先行させず、HOG discovery から必要時だけ security upgrade へ委ねる実装で通っている
+- 次段階は「成功状態の固定」と「長時間運用や繰り返し reconnect での安定性確認」
+
 ## Validation Tracks
 
 ### BLE スパイク

@@ -22,6 +22,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_fail_discovery(
     zmk_usb_bridge_event_reason_t reason,
     int32_t status_code
 );
+bool zmk_usb_bridge_hog_client_discovery_active(uint16_t conn_handle);
 bool zmk_usb_bridge_hog_client_ready(void);
 uint16_t zmk_usb_bridge_hog_client_capability_flags(void);
 const zmk_usb_bridge_hog_profile_t *zmk_usb_bridge_hog_client_profile(void);

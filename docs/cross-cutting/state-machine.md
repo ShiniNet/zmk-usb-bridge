@@ -106,7 +106,7 @@
 - 接続試行の許可は bond / identity 条件で絞る
 - scan は待機中に継続し、connect attempt の直前だけ停止する
 - identity 解決できない private address を見つけても、即 `recovery_required` へは進まず scan 継続を優先する
-- `peer invisible` からの fresh re-observation を受けたら、backoff 状態を持ち越さず `connecting` へ進める
+- `peer invisible` からの fresh re-observation を受けたら、backoff 状態を持ち越さず `reconnecting_fast` 相当へ戻してよい
 
 ### `connecting`
 
@@ -142,6 +142,7 @@
 - 既存 bond の不整合が確定し、自動再接続を継続しても改善しないと判断した状態
 - 利用者には long press による bond erase と再ペアリングを促す
 - 短押しだけではこの状態を解除しない
+- `security failure` の後続で飛んでくる `disconnected` や追加の `connect failure` では、この状態を上書きしない
 
 ### `bond_erasing`
 
@@ -158,6 +159,7 @@
 - `connecting` 中の bring-up 失敗は、pairing と reconnect で戻り先を分けて扱う
 - USB 側致命エラー時のみ `fatal_error` を許容する
 - `bond/auth mismatch` は reconnect schedule を継続せず `recovery_required` を優先する
+- ただし stale bond 判定は 1 回の security failure だけで確定させず、連続失敗で確定させる
 
 ## Validation Needed
 
@@ -167,7 +169,7 @@
 - 継続再接続がホストや SoC に悪影響を与えないか
 - `scan restart + attempt backoff` の組み合わせで reconnect 体感が悪化しないか
 - metadata-only 破損で `recovery_required` へ誤遷移しないか
-- `peer invisible -> fresh re-observation -> 即 reconnect` の列が過剰再試行なく成立するか
+- `peer invisible -> fresh re-observation -> stabilization delay -> reconnect` の列が過剰再試行なく成立するか
 
 ## Related Documents
 
