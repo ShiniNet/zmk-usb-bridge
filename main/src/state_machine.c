@@ -2,6 +2,7 @@
 
 #include "zmk_usb_bridge/ble_command.h"
 #include "zmk_usb_bridge/ble_manager.h"
+#include "zmk_usb_bridge/ble_reconnect.h"
 #include "zmk_usb_bridge/ble_runtime.h"
 #include "zmk_usb_bridge/bridge.h"
 #include "zmk_usb_bridge/recovery_ui.h"
@@ -46,6 +47,17 @@ static zmk_usb_bridge_status_t transition_to(
 
 static zmk_usb_bridge_status_t transition_to_state_only(zmk_usb_bridge_state_t next_state) {
     return set_state(next_state);
+}
+
+static zmk_usb_bridge_status_t transition_to_reconnect_state(void) {
+    const bool backoff = zmk_usb_bridge_ble_reconnect_is_in_backoff_mode();
+
+    return transition_to(
+        backoff ? ZMK_USB_BRIDGE_STATE_RECONNECTING_BACKOFF
+                : ZMK_USB_BRIDGE_STATE_RECONNECTING_FAST,
+        backoff ? ZMK_USB_BRIDGE_BLE_COMMAND_ENTER_RECONNECT_BACKOFF
+                : ZMK_USB_BRIDGE_BLE_COMMAND_ENTER_RECONNECT_FAST
+    );
 }
 
 static zmk_usb_bridge_status_t transition_to_and_post(
@@ -160,10 +172,13 @@ zmk_usb_bridge_status_t zmk_usb_bridge_state_machine_handle_event(const zmk_usb_
         return transition_to_state_only(ZMK_USB_BRIDGE_STATE_CONNECTING);
     case ZMK_USB_BRIDGE_EVENT_CONNECT_FAILURE:
     case ZMK_USB_BRIDGE_EVENT_HID_FAILURE:
+        if (g_has_bond) {
+            return transition_to_reconnect_state();
+        }
+
         return transition_to(
-            g_has_bond ? ZMK_USB_BRIDGE_STATE_RECONNECTING_FAST : ZMK_USB_BRIDGE_STATE_PAIRING_SCAN,
-            g_has_bond ? ZMK_USB_BRIDGE_BLE_COMMAND_ENTER_RECONNECT_FAST
-                       : ZMK_USB_BRIDGE_BLE_COMMAND_START_PAIRING_SCAN
+            ZMK_USB_BRIDGE_STATE_PAIRING_SCAN,
+            ZMK_USB_BRIDGE_BLE_COMMAND_START_PAIRING_SCAN
         );
     case ZMK_USB_BRIDGE_EVENT_HID_READY:
         g_has_bond = g_has_bond || zmk_usb_bridge_ble_runtime_has_bond();

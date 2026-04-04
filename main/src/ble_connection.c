@@ -5,6 +5,7 @@
 #include "zmk_usb_bridge/ble_runtime.h"
 #include "zmk_usb_bridge/hog_client.h"
 
+#include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/logging/log.h>
@@ -13,6 +14,7 @@ LOG_MODULE_REGISTER(zub_ble_conn, LOG_LEVEL_INF);
 
 enum {
     ZMK_USB_BRIDGE_BOND_MISMATCH_CONFIRMATION_COUNT = 2,
+    ZMK_USB_BRIDGE_CONNECT_ATTEMPT_TIMEOUT_MS = 4000,
 };
 
 static uint16_t g_active_conn_handle;
@@ -20,6 +22,43 @@ static bool g_callbacks_registered;
 static struct bt_conn *g_active_conn;
 static bool g_security_ready;
 static uint8_t g_bond_mismatch_streak;
+static bool g_connect_attempt_pending;
+static struct k_work_delayable g_connect_timeout_work;
+
+static const struct bt_conn_le_create_param g_create_param = {
+    .options = BT_CONN_LE_OPT_NONE,
+    .interval = BT_GAP_SCAN_FAST_INTERVAL,
+    .window = BT_GAP_SCAN_FAST_INTERVAL,
+    .interval_coded = 0,
+    .window_coded = 0,
+    .timeout = ZMK_USB_BRIDGE_CONNECT_ATTEMPT_TIMEOUT_MS / 10,
+};
+
+static void clear_connect_attempt_timeout(void) {
+    g_connect_attempt_pending = false;
+    (void)k_work_cancel_delayable(&g_connect_timeout_work);
+}
+
+static void connect_timeout_work_handler(struct k_work *work) {
+    int err;
+
+    ARG_UNUSED(work);
+
+    if (!g_connect_attempt_pending || g_active_conn == NULL) {
+        return;
+    }
+
+    g_connect_attempt_pending = false;
+    LOG_WRN(
+        "connect attempt watchdog expired timeout_ms=%d",
+        ZMK_USB_BRIDGE_CONNECT_ATTEMPT_TIMEOUT_MS
+    );
+
+    err = bt_conn_disconnect(g_active_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+    if (err != 0) {
+        LOG_WRN("connect attempt cancel failed err=%d", err);
+    }
+}
 
 static zmk_usb_bridge_status_t request_link_security(uint16_t conn_handle) {
     int err;
@@ -133,6 +172,8 @@ static bool security_failure_looks_like_bond_mismatch(enum bt_security_err err) 
 static void on_connected(struct bt_conn *conn, uint8_t err) {
     const uint16_t conn_handle = conn_handle_of(conn);
 
+    clear_connect_attempt_timeout();
+
     if (err != 0U) {
         if (g_active_conn != NULL) {
             bt_conn_unref(g_active_conn);
@@ -195,6 +236,8 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_init(void) {
     g_active_conn = NULL;
     g_security_ready = false;
     g_bond_mismatch_streak = 0;
+    g_connect_attempt_pending = false;
+    k_work_init_delayable(&g_connect_timeout_work, connect_timeout_work_handler);
 
     if (!g_callbacks_registered) {
         bt_conn_cb_register(&g_conn_callbacks);
@@ -217,7 +260,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_connect_peer(const bt_addr
         return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
     }
 
-    err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &conn);
+    err = bt_conn_le_create(addr, &g_create_param, BT_LE_CONN_PARAM_DEFAULT, &conn);
     if (err != 0) {
         LOG_INF("connect create failed err=%d", err);
         return zmk_usb_bridge_ble_connection_on_connect_failure(
@@ -227,7 +270,15 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_connect_peer(const bt_addr
     }
 
     g_active_conn = conn;
-    LOG_INF("connect create started");
+    g_connect_attempt_pending = true;
+    k_work_reschedule(
+        &g_connect_timeout_work,
+        K_MSEC(ZMK_USB_BRIDGE_CONNECT_ATTEMPT_TIMEOUT_MS)
+    );
+    LOG_INF(
+        "connect create started timeout_ms=%d",
+        ZMK_USB_BRIDGE_CONNECT_ATTEMPT_TIMEOUT_MS
+    );
     return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
@@ -247,11 +298,16 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_disconnect_active(uint8_t 
     return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
+bool zmk_usb_bridge_ble_connection_is_busy(void) {
+    return g_active_conn != NULL;
+}
+
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_on_connect_success(uint16_t conn_handle) {
     zmk_usb_bridge_status_t err;
     const bt_addr_le_t *dst;
     bool bonded = false;
 
+    clear_connect_attempt_timeout();
     g_active_conn_handle = conn_handle;
     g_security_ready = false;
     if (g_active_conn != NULL) {
@@ -288,6 +344,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_on_connect_failure(
     zmk_usb_bridge_event_reason_t reason,
     int32_t status_code
 ) {
+    clear_connect_attempt_timeout();
     (void)zmk_usb_bridge_ble_reconnect_note_failure();
     LOG_INF("connect failure reason=%d status_code=%d", reason, (int)status_code);
     return zmk_usb_bridge_ble_manager_post_event_with_payload(
@@ -389,6 +446,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_on_disconnected(
 ) {
     const bool security_ready = g_security_ready;
 
+    clear_connect_attempt_timeout();
     (void)zmk_usb_bridge_hog_client_reset();
     g_security_ready = false;
 

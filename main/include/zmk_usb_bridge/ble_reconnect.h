@@ -13,3 +13,4 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_note_attempt_started(void);
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_note_failure(void);
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_reconnect_note_connected(void);
 bool zmk_usb_bridge_ble_reconnect_should_attempt_now(void);
+bool zmk_usb_bridge_ble_reconnect_is_in_backoff_mode(void);

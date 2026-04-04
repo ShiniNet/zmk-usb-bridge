@@ -41,6 +41,8 @@ static bool g_scan_callbacks_registered;
 static bool g_scan_active;
 static bool g_pairing_mode;
 static zmk_usb_bridge_scan_candidate_state_t g_candidate_cache[ZMK_USB_BRIDGE_SCAN_CACHE_SIZE];
+static bt_addr_le_t g_last_known_peer_addr;
+static bool g_last_known_peer_addr_valid;
 
 static bool appearance_is_keyboard_family(uint16_t appearance) {
     return appearance == BT_APPEARANCE_HID_KEYBOARD || appearance == BT_APPEARANCE_GENERIC_HID;
@@ -48,6 +50,11 @@ static bool appearance_is_keyboard_family(uint16_t appearance) {
 
 static void reset_candidate_cache(void) {
     memset(g_candidate_cache, 0, sizeof(g_candidate_cache));
+}
+
+static void clear_last_known_peer_addr(void) {
+    memset(&g_last_known_peer_addr, 0, sizeof(g_last_known_peer_addr));
+    g_last_known_peer_addr_valid = false;
 }
 
 static void add_bond_to_accept_list(const struct bt_bond_info *info, void *user_data) {
@@ -206,22 +213,27 @@ static void maybe_log_pairing_candidate(zmk_usb_bridge_scan_candidate_state_t *c
     );
 }
 
-static void maybe_start_connect(const bt_addr_le_t *addr, bool known_device) {
+static zmk_usb_bridge_status_t maybe_start_connect(const bt_addr_le_t *addr, bool known_device) {
     zmk_usb_bridge_status_t status;
     zmk_usb_bridge_event_type_t event_type =
         known_device ? ZMK_USB_BRIDGE_EVENT_KNOWN_DEVICE_FOUND
                      : ZMK_USB_BRIDGE_EVENT_PAIRING_CANDIDATE_FOUND;
 
+    if (known_device && zmk_usb_bridge_ble_connection_is_busy()) {
+        LOG_INF("skip connect attempt while connection context is busy");
+        return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
+    }
+
     status = zmk_usb_bridge_ble_scan_stop();
     if (status != ZMK_USB_BRIDGE_STATUS_OK) {
         LOG_WRN("scan stop before connect failed status=%d", status);
-        return;
+        return status;
     }
 
     status = zmk_usb_bridge_ble_connection_connect_peer(addr);
     if (status != ZMK_USB_BRIDGE_STATUS_OK) {
         LOG_WRN("connect peer failed status=%d", status);
-        return;
+        return status;
     }
 
     if (known_device) {
@@ -232,6 +244,8 @@ static void maybe_start_connect(const bt_addr_le_t *addr, bool known_device) {
     if (status != ZMK_USB_BRIDGE_STATUS_OK) {
         LOG_WRN("post candidate event failed status=%d", status);
     }
+
+    return status;
 }
 
 static void on_scan_recv(const struct bt_le_scan_recv_info *info, struct net_buf_simple *buf) {
@@ -254,14 +268,16 @@ static void on_scan_recv(const struct bt_le_scan_recv_info *info, struct net_buf
     if (g_pairing_mode) {
         maybe_log_pairing_candidate(candidate);
         if (candidate->reported) {
-            maybe_start_connect(info->addr, false);
+            (void)maybe_start_connect(info->addr, false);
         }
     } else if ((info->adv_props & BT_GAP_ADV_PROP_CONNECTABLE) != 0U) {
+        bt_addr_le_copy(&g_last_known_peer_addr, info->addr);
+        g_last_known_peer_addr_valid = true;
         (void)zmk_usb_bridge_ble_reconnect_note_known_peer_seen();
         if (!zmk_usb_bridge_ble_reconnect_should_attempt_now()) {
             return;
         }
-        maybe_start_connect(info->addr, true);
+        (void)maybe_start_connect(info->addr, true);
     }
 
     LOG_DBG(
@@ -329,11 +345,13 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_init(void) {
     g_scan_active = false;
     g_pairing_mode = false;
     reset_candidate_cache();
+    clear_last_known_peer_addr();
     LOG_INF("init");
     return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_start_pairing(void) {
+    clear_last_known_peer_addr();
     return start_scan(BT_LE_SCAN_ACTIVE, true);
 }
 
@@ -360,6 +378,18 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_start_known_device(void) {
 
     param.options |= BT_LE_SCAN_OPT_FILTER_ACCEPT_LIST;
     return start_scan(&param, false);
+}
+
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_trigger_known_device_attempt(void) {
+    if (g_pairing_mode || !g_scan_active) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
+    }
+
+    if (!g_last_known_peer_addr_valid) {
+        return ZMK_USB_BRIDGE_STATUS_NOT_FOUND;
+    }
+
+    return maybe_start_connect(&g_last_known_peer_addr, true);
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_scan_stop(void) {

@@ -1,4 +1,5 @@
 #include "zmk_usb_bridge/ble_reconnect.h"
+#include "zmk_usb_bridge/ble_scan.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -31,10 +32,21 @@ typedef struct {
 static zmk_usb_bridge_reconnect_state_t g_reconnect;
 
 static void attempt_timer_fired(struct k_work *work) {
+    zmk_usb_bridge_status_t status;
+
     ARG_UNUSED(work);
 
     g_reconnect.attempt_armed = true;
     LOG_INF("attempt armed mode=%d", g_reconnect.mode);
+
+    if (!g_reconnect.peer_visible) {
+        return;
+    }
+
+    status = zmk_usb_bridge_ble_scan_trigger_known_device_attempt();
+    if (status == ZMK_USB_BRIDGE_STATUS_OK) {
+        LOG_INF("attempt trigger dispatched from reconnect timer");
+    }
 }
 
 static void visibility_timer_fired(struct k_work *work) {
@@ -201,4 +213,8 @@ bool zmk_usb_bridge_ble_reconnect_should_attempt_now(void) {
     }
 
     return g_reconnect.attempt_armed;
+}
+
+bool zmk_usb_bridge_ble_reconnect_is_in_backoff_mode(void) {
+    return g_reconnect.mode == ZMK_USB_BRIDGE_RECONNECT_MODE_BACKOFF;
 }
