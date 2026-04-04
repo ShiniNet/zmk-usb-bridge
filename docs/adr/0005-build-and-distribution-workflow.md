@@ -14,7 +14,7 @@ Accepted
 
 ## Decision
 
-- build の主経路は `west build`
+- build の主経路は workspace の build wrapper script から `west build` を呼ぶ運用
 - 配布の主経路は `fork した各自の repository で GitHub Actions を実行し、workflow artifact を取得して自分で書き込む` 方式とする
 - 利用者設定の正本は repository 追跡下の `user config fragment` とする
 - build は `prj.conf` と board/user/ci の差分ファイルで構成する
@@ -23,7 +23,7 @@ Accepted
 
 ## Consequences
 
-- `west build` と Zephyr 標準の設定モデルに寄せることで、再現性を保ちやすい
+- `west build` と Zephyr 標準の設定モデルに寄せつつ、workspace build wrapper へ入口を一本化することで、再現性を保ちやすい
 - fork 上 self-build を標準導線にすることで、利用者ごとの allowlist 差分を中央配布なしで吸収しやすい
 - `UF2` 主導線により、`XIAO nRF52840` の書き込み手順を短く保ちやすい
 - 利用者には `fork` と Actions artifact の最低限の説明が必要になる

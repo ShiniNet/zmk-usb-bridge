@@ -8,7 +8,7 @@ Accepted
 
 - `Zephyr upstream` と `nRF Connect SDK` のどちらを正本にするか決める必要がある
 - ローカルと CI で別 version の `zephyr` を使うと再現性が落ちる
-- `ShiniNet/zmk-config-LalaPadGen2` は `zmk v0.3.0` を使っており、その `app/west.yml` は `zmkfirmware/zephyr v3.5.0+zmk-fixes` を参照している
+- reference repo `zmk-config-LalaPadGen2` は `zmk v0.3.0` を使っており、その `app/west.yml` は `zmkfirmware/zephyr v3.5.0+zmk-fixes` を参照している
 - `seeeduino_xiao_ble` の board 名もこの系統に揃えたい
 
 ## Decision
@@ -21,7 +21,7 @@ Accepted
 
 ## Consequences
 
-- `ShiniNet/zmk-config-LalaPadGen2` と board 名、Zephyr 系譜、周辺知見を揃えやすくなる
+- reference repo `zmk-config-LalaPadGen2` と board 名、Zephyr 系譜、周辺知見を揃えやすくなる
 - build 不具合や BLE / USB 挙動差分の切り分けがしやすくなる
 - `latest` 追従による意図しない breaking change を避けやすい
 - `nRF Connect SDK` 特有の管理層を増やさずに済む

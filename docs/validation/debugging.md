@@ -10,7 +10,7 @@
 - 第一候補は `USB HID + USB CDC ACM` の複合 device とする
 - `HID` は引き続きホスト評価に使い、追加の `CDC ACM` を log/console 専用 COM port として使う
 - build では local snippet `zub-usb-logging` を使う
-- 運用感は `ZMK` の `zmk-usb-logging` snippet と同様に、`west build -S ...` で USB logging を有効化する方式に寄せる
+- 運用感は `ZMK` の `zmk-usb-logging` snippet と同様に、workspace 直下 `scripts/build_zmk_usb_bridge.sh --profile dev-usb-logging` で USB logging を有効化する方式に寄せる
 - Windows での host-side log capture は workspace 直下 `scripts/start_zmk_usb_bridge_session_windows.ps1` を第一候補にする
 - script は repository 追跡外の作業用 helper として置き、`ExecutionPolicy Bypass` 付きで起動する
 
@@ -23,11 +23,12 @@
 
 ## Build
 
-- 通常 build に snippet `zub-usb-logging` を重ねて使う
+- 通常 build では local build script の `dev-usb-logging profile` を使う
 - `config/user.conf` は application 側で既定マージされる
 
 ```sh
-west build -b seeeduino_xiao_ble zmk-usb-bridge --pristine -S zub-usb-logging
+cd /home/terunet/work/Dev_zmk_usb_bridge
+./scripts/build_zmk_usb_bridge.sh --profile dev-usb-logging
 ```
 
 ## What The Snippet Changes
@@ -61,7 +62,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\\wsl.localhost\<distro
 
 ## Log Capture Procedure
 
-1. `zub-usb-logging` build を `UF2` で書き込む
+1. `dev-usb-logging profile` を build し、artifact から `UF2` を取り出して書き込む
 2. 実機を USB ホストへ接続する
 3. 必要なら Windows の `Device Manager` または script の `-ListPorts` で `COMx` を確認する
 4. Windows PowerShell から `ExecutionPolicy Bypass` 付きで `start_zmk_usb_bridge_session_windows.ps1` を起動する
@@ -72,7 +73,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\\wsl.localhost\<distro
 ## Recommended Workflow
 
 - 当面の実運用では `start_zmk_usb_bridge_session_windows.ps1` を標準導線にする
-- build / flash / 実機操作は手元で行い、必要なログだけを Codex に戻して解析する
+- build / flash / 実機操作は手元で行い、build は `scripts/build_zmk_usb_bridge.sh` に統一したうえで必要なログだけを Codex に戻して解析する
 - script 側で `serial.log` と `summary.json` まで揃うので、run artifact をそのまま共有しやすい
 - `ExecutionPolicy Bypass` を command line 側で明示することで、`\\wsl.localhost\...` 実行時の手動応答を避ける
 

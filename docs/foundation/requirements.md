@@ -65,7 +65,7 @@
 
 ## Build / Distribution Requirements
 
-- 開発時は `west build` を主経路として成立させたい
+- 開発時は workspace 直下 `scripts/build_zmk_usb_bridge.sh` を主経路とし、その内部で `west build` を安定利用できること
 - 利用者が `fork + GitHub Actions + artifact download + local flashing` の流れで self-build できること
 - 利用者ごとの `pairing name allowlist` を repository 追跡下の設定ファイル編集だけで変更できること
 - 利用者に `menuconfig` や IDE 固有設定を必須にしないこと

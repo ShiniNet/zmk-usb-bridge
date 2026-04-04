@@ -34,4 +34,4 @@ manifest:
           - trusted-firmware-m
 
   self:
-    path: ShiniNet/zmk-usb-bridge
+    path: zmk-usb-bridge

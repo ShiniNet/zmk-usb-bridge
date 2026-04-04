@@ -11,19 +11,25 @@
 - workspace 正本は repository 同梱の `west.yml` とする
 - 試作ボードは `Seeed XIAO nRF52840`
 - build 基盤の `zephyr` は `zmkfirmware/zephyr v3.5.0+zmk-fixes` に pin する
-- 開発の主経路は `west build` とする
+- 開発の主経路は workspace 直下 `scripts/build_zmk_usb_bridge.sh` とし、その内部で `west build` を用いる
 - 利用者配布は `fork -> GitHub Actions -> artifact download -> local flashing` を標準導線にする
 - 利用者設定は repository 追跡下の設定フラグメントで扱う
 - 中央 repository から恒久 firmware release を配る前提は置かない
 
 ## Local Workflow
 
+- workspace root は manifest repository の親 directory である `ShiniNet/` とする
 - source tree は Zephyr application として管理する
-- build は `west build -b seeeduino_xiao_ble` を主経路にする
-- 初回依存取得は `west init -l ShiniNet/zmk-usb-bridge && west update` を第一候補にする
+- 日常 build は workspace 直下 `scripts/build_zmk_usb_bridge.sh` を唯一の入口とする
+- build script は workspace root `ShiniNet/` で `west build -d build/<board>/<profile> -b <board> zmk-usb-bridge` を実行する
+- `west` の build 出力は workspace 直下 `build/<board>/<profile>/` を作業用 directory として使う
+- build script は成果物を `artifacts/builds/<timestamp>_<profile>_<board>/` と `artifacts/builds/latest/<profile>_<board>/` に複製する
+- build script は `build.log`、`command.txt`、`build_meta.json`、主要成果物一覧を artifact に含める
+- build script は履歴を新しい順で 10 件だけ保持する
+- 初回依存取得は `west init -l ShiniNet/zmk-usb-bridge` で workspace root を作成し、その後 `ShiniNet/` で `west update` を実行する
 - repository 既定の `config/user.conf` は application 側で自動取り込みする
-- CI 専用差分だけを追加したい場合は `west build ... -- -DEXTRA_CONF_FILE=config/ci.conf` を使う
-- 実機 bring-up の第一候補は `west build -S zub-usb-logging` による `USB CDC ACM logging` 導線とする
+- CI 専用差分だけを追加したい場合は build script を拡張するか、例外的に `west build ... -- -DEXTRA_CONF_FILE=config/ci.conf` を明示利用する
+- 実機 bring-up の第一候補は build script の `dev-usb-logging profile` による `USB CDC ACM logging` 導線とする
 - Windows での実機 log capture は workspace 直下 `scripts/start_zmk_usb_bridge_session_windows.ps1` を第一候補にする
 - `\\wsl.localhost\...` 経由で script を呼ぶ場合は `ExecutionPolicy Bypass` 付き PowerShell 起動を標準にする
 - `UF2` 書き込みを試作主導線とし、必要に応じて外部 debug probe による `west flash` を補助導線にする
@@ -57,7 +63,11 @@
 - `config/ci.conf`: CI 実行都合の差分だけを持つ設定
 - `config/dev-rtt.conf`: 開発者向け `RTT logging` 差分
 - `snippets/zub-usb-logging/`: 開発者向け `USB CDC ACM logging` snippet
+- workspace `scripts/build_zmk_usb_bridge.sh`: 開発用 build wrapper
 - workspace `scripts/start_zmk_usb_bridge_session_windows.ps1`: Windows 実機 log capture helper
+- workspace `build/<board>/<profile>/`: board/profile ごとの作業 build directory
+- workspace `artifacts/builds/<timestamp>_<profile>_<board>/`: build 履歴 artifact
+- workspace `artifacts/builds/latest/<profile>_<board>/`: 直近 build の参照先
 
 ### Composition Rules
 
@@ -66,6 +76,7 @@
 - `config/user.conf` は既定でマージし、`config/ci.conf` は必要時だけ `EXTRA_CONF_FILE` で追加する
 - `zub-usb-logging` のような開発用 snippet は `release` の USB descriptor 正本とは分離する
 - `config/dev-rtt.conf` も `EXTRA_CONF_FILE` で追加し、必要時だけ使う
+- `release profile` は追加 snippet なし、`dev-usb-logging profile` は `zub-usb-logging` snippet を build script から付与する
 - 利用者意味論を変える設定は `config/ci.conf` に置かない
 - CI でもローカルと同じ設定入力を使い、workflow 側で別の正本を増やさない
 
@@ -94,6 +105,7 @@
 - 標準 artifact は `release profile` の build 結果を格納する
 - `Seeed XIAO nRF52840` 向けの主導線は `zephyr.uf2` とする
 - 補助導線として `zephyr.hex` と build metadata を含める
+- ローカル build script も `zephyr.uf2`、`zephyr.hex`、`zephyr.elf`、`zephyr.map`、config/dts と build metadata を残す
 - 外部 debug probe 利用者向けには `west flash` 前提の補助手順を許容する
 
 ## Open Questions
@@ -104,7 +116,7 @@
 
 ## Validation Needed
 
-- `west build` が日常開発経路として安定するか
+- build script 経由の `west build` が日常開発経路として安定するか
 - `config/user.conf` 編集だけで allowlist 変更が完結するか
 - fork 上 GitHub Actions artifact だけで利用者が self-build できるか
 - `zephyr.uf2` 主導線と `zephyr.hex` 補助導線の二本立てが有効か

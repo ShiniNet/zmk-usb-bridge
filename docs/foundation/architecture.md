@@ -69,7 +69,7 @@
 この判断の理由は以下の通り。
 
 - ZMK と同じ Zephyr 系の設計前提へ寄せやすい
-- `ShiniNet/zmk-config-LalaPadGen2` と同じ `seeeduino_xiao_ble` board 名を使って検証しやすい
+- reference repo `zmk-config-LalaPadGen2` と同じ `seeeduino_xiao_ble` board 名を使って検証しやすい
 - 本プロジェクトの主戦場である `BLE central + bond + privacy + reconnect` を扱いやすい
 - USB Device を備えた `nRF52840` 上で BLE と USB を同一 SoC に収められる
 - `Seeed XIAO nRF52840` を実験用ドングルとして流用しやすい
