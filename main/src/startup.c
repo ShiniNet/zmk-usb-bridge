@@ -25,6 +25,7 @@ static zmk_usb_bridge_status_t post_startup_events(void) {
     zmk_usb_bridge_metadata_t metadata;
     zmk_usb_bridge_status_t status;
     bool metadata_fault = false;
+    zmk_usb_bridge_event_reason_t metadata_fault_reason = ZMK_USB_BRIDGE_EVENT_REASON_NONE;
 
     if (!zmk_usb_bridge_ble_runtime_is_ready()) {
         return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
@@ -32,16 +33,27 @@ static zmk_usb_bridge_status_t post_startup_events(void) {
 
     status = zmk_usb_bridge_persist_load_metadata(&metadata);
     if (status == ZMK_USB_BRIDGE_STATUS_OK) {
-        LOG_INF("startup metadata loaded");
+        LOG_INF(
+            "startup metadata loaded version=%u last_peer_valid=%d identity_valid=%d",
+            metadata.metadata_version,
+            metadata.last_peer_snapshot.valid,
+            metadata.identity_snapshot.valid
+        );
     } else if (status == ZMK_USB_BRIDGE_STATUS_NOT_FOUND) {
         LOG_INF("startup metadata not found");
     } else {
+        const zmk_usb_bridge_status_t load_status = status;
+
         LOG_WRN("startup metadata load failed status=%d; discarding", status);
         status = zmk_usb_bridge_persist_discard_metadata();
         if (status != ZMK_USB_BRIDGE_STATUS_OK) {
             return status;
         }
         metadata_fault = true;
+        metadata_fault_reason =
+            load_status == ZMK_USB_BRIDGE_STATUS_SIZE_MISMATCH
+                ? ZMK_USB_BRIDGE_EVENT_REASON_METADATA_VERSION_MISMATCH
+                : ZMK_USB_BRIDGE_EVENT_REASON_METADATA_CORRUPTED;
     }
 
     status = zmk_usb_bridge_ble_manager_post_simple_event(
@@ -66,7 +78,7 @@ static zmk_usb_bridge_status_t post_startup_events(void) {
 
     return zmk_usb_bridge_ble_manager_post_event_with_payload(
         ZMK_USB_BRIDGE_EVENT_METADATA_FAULT,
-        ZMK_USB_BRIDGE_EVENT_REASON_METADATA_CORRUPTED,
+        metadata_fault_reason,
         0,
         0,
         ZMK_USB_BRIDGE_CAPABILITY_NONE

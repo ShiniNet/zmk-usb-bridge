@@ -5,6 +5,7 @@
 #include "zmk_usb_bridge/ble_runtime.h"
 #include "zmk_usb_bridge/hog_client.h"
 
+#include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -33,6 +34,20 @@ static const struct bt_conn_le_create_param g_create_param = {
     .window_coded = 0,
     .timeout = ZMK_USB_BRIDGE_CONNECT_ATTEMPT_TIMEOUT_MS / 10,
 };
+
+static void fill_snapshot_from_addr(
+    zmk_usb_bridge_peer_addr_snapshot_t *snapshot,
+    const bt_addr_le_t *addr
+) {
+    if (snapshot == NULL || addr == NULL) {
+        return;
+    }
+
+    memset(snapshot, 0, sizeof(*snapshot));
+    snapshot->valid = true;
+    snapshot->addr_type = addr->type;
+    memcpy(snapshot->addr, addr->a.val, sizeof(snapshot->addr));
+}
 
 static void clear_connect_attempt_timeout(void) {
     g_connect_attempt_pending = false;
@@ -300,6 +315,29 @@ zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_disconnect_active(uint8_t 
 
 bool zmk_usb_bridge_ble_connection_is_busy(void) {
     return g_active_conn != NULL;
+}
+
+zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_capture_metadata(
+    zmk_usb_bridge_metadata_t *metadata
+) {
+    const bt_addr_le_t *dst;
+
+    if (metadata == NULL) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
+    }
+
+    if (g_active_conn == NULL) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
+    }
+
+    memset(metadata, 0, sizeof(*metadata));
+    dst = bt_conn_get_dst(g_active_conn);
+    if (dst == NULL) {
+        return ZMK_USB_BRIDGE_STATUS_NOT_FOUND;
+    }
+
+    fill_snapshot_from_addr(&metadata->last_peer_snapshot, dst);
+    return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_ble_connection_on_connect_success(uint16_t conn_handle) {

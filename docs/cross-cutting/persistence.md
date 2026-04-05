@@ -33,8 +33,9 @@
 
 - `BLE stack` が保持する既知キーボード 1 台分の bond 関連データ
 - 補助メタデータの永続化フォーマットバージョン
-- stack が安定した identity を参照できる場合だけ、その `addr_type + addr[6]` snapshot
 - 最後に正常接続できた peer の `addr_type + addr[6]` snapshot
+- stack が安定した identity を参照できる場合だけ、その `addr_type + addr[6]` snapshot
+- MVP の第一段階では `metadata_version` と `last successful peer snapshot` を主対象にし、`identity snapshot` は取れる場合だけ保持する
 
 ### 補助メタデータの役割
 
@@ -43,6 +44,7 @@
 - known-device reconnect の接続可否判定には使わない
 - 欠損しても次回正常接続後に再生成できることを優先する
 - private address の追跡や自前解決には使わない
+- 保存や再生成に失敗しても、bond 主体の接続成功を妨げない
 
 ### 保存方式
 
@@ -58,6 +60,7 @@
 - bond erase 操作時は `BLE bond erase` と組み合わせて消去し、両方成功時だけ完了扱いにする
 - フォーマット変更時に移行または破棄
 - 補助メタデータを破棄した場合は、次回正常接続成功時に再生成する
+- MVP では `metadata_version` 不一致時は移行せず discard し、次回正常接続後に再生成する
 
 ## Failure Handling
 

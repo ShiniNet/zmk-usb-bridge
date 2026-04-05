@@ -177,10 +177,12 @@
 - `BLE stack 管理の bond` を識別の正本とする
 - アプリ側永続化は `補助メタデータ` のみを持ち、bond の代替主キーは持たない
 - MVP の補助メタデータ最小集合は `metadata format version`、`identity snapshot if available`、`last successful peer address snapshot` とする
+- MVP の第一段階では `metadata format version` と `last successful peer address snapshot` を優先し、`identity snapshot if available` は取得できる場合だけ保持する
 - `identity snapshot if available` は stack が安定した identity address を参照できる場合だけ保存候補にする
 - `peer address snapshot` は診断専用に留め、known-device reconnect の接続可否判定には使わない
 - local name、RSSI、advertisement 上の service 列挙結果は補助メタデータに含めない
 - 補助メタデータ欠損や破損だけでは再ペアリングへ倒さず、bond が有効なら bond 主体で再接続を継続する
+- 補助メタデータ保存は `HID_READY` 後の best-effort とし、保存失敗だけで `connected` 失敗扱いにはしない
 
 ### Privacy Policy
 

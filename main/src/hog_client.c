@@ -4,6 +4,7 @@
 #include "zmk_usb_bridge/ble_manager.h"
 #include "zmk_usb_bridge/ble_reconnect.h"
 #include "zmk_usb_bridge/bridge.h"
+#include "zmk_usb_bridge/persist.h"
 
 #include <errno.h>
 #include <string.h>
@@ -86,6 +87,22 @@ static zmk_usb_bridge_status_t start_descriptor_discovery(size_t index);
 static zmk_usb_bridge_status_t start_report_ref_read(size_t index);
 static zmk_usb_bridge_status_t start_mouse_feature_read(void);
 static zmk_usb_bridge_status_t start_subscriptions(void);
+
+static void store_current_peer_metadata(uint16_t conn_handle) {
+    zmk_usb_bridge_metadata_t metadata;
+    zmk_usb_bridge_status_t status =
+        zmk_usb_bridge_ble_connection_capture_metadata(&metadata);
+
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        LOG_WRN("skip metadata store conn_handle=%u capture_status=%d", conn_handle, status);
+        return;
+    }
+
+    status = zmk_usb_bridge_persist_store_metadata(&metadata);
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        LOG_WRN("metadata store failed conn_handle=%u status=%d", conn_handle, status);
+    }
+}
 
 static int16_t saturate_mouse_delta_i16(int32_t value) {
     return (int16_t)CLAMP((int)value, (int)INT16_MIN, (int)INT16_MAX);
@@ -1228,6 +1245,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_complete_discovery(uint16_t co
     }
 
     (void)zmk_usb_bridge_bridge_set_input_active(true);
+    store_current_peer_metadata(conn_handle);
     return zmk_usb_bridge_ble_manager_post_event_with_payload(
         ZMK_USB_BRIDGE_EVENT_HID_READY,
         ZMK_USB_BRIDGE_EVENT_REASON_NONE,
