@@ -37,9 +37,11 @@
 
 - `Seeed XIAO nRF52840` 向けに `Zephyr USB device stack` で最小列挙スパイクを実装済み
 - 現在の descriptor は `single HID interface + report IDs` で `Keyboard(1) + Consumer(2) + Mouse(3)` を提示する
-- Consumer Control は `16-bit single usage`、Pointer は `relative X/Y + wheel + AC Pan` を `8-bit` 幅で送る
-- bridge 内部では mouse 値を `int16_t` で保持し、USB 送信時に飽和させる
+- Consumer Control は `16-bit single usage`、Pointer は `relative X/Y + wheel + AC Pan` を `16-bit` 幅で送る
+- bridge 内部では mouse 値を `int16_t` で保持し、USB 送信時もそのまま `16-bit` report へ流す
 - HOG mouse input は peer 実装差を許容し、`compact 5-byte` と `buttons + 4x s16le = 9-byte` の両方を受けられるようにする
+- USB mouse descriptor は `Resolution Multiplier` feature report も常時持ち、BLE peer に `mouse_feature` があればその値を読んで Windows 側の smooth scrolling と粒度を揃える
+- host から `Resolution Multiplier` が更新された場合は bridge 内 state に反映し、可能なら BLE peer の `mouse_feature` にも書き戻す
 - host 未構成時は report を破棄し、構成後に列挙確認と safe-state 送出を優先する
 - HOG input は `HID ready` 以後だけ bridge へ通し、disconnect / bond erase / reset 後は stale notification を破棄する
 - mouse の集約は `HOG input queue` 上で `連続かつ同一 buttons 状態` の report だけを対象にし、button 変化や keyboard / consumer をまたいで畳まない

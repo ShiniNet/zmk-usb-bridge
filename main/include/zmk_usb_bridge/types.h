@@ -112,6 +112,11 @@ typedef struct {
 } zmk_usb_bridge_hog_profile_t;
 
 typedef struct {
+    uint8_t wheel;
+    uint8_t hor_wheel;
+} zmk_usb_bridge_mouse_resolution_t;
+
+typedef struct {
     bool valid;
     uint8_t addr_type;
     uint8_t addr[6];

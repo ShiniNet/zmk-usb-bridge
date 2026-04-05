@@ -23,6 +23,7 @@ Accepted for MVP
 - Keyboard report は既存 ZMK の標準 `HKRO` 構成に可能な限り一致させる
 - Consumer Control は `basic` usage 範囲で含める
 - Mouse / Pointer 側は `相対移動`、`ボタン 1-5`、`縦横スクロール` を含める
+- Mouse / Pointer 側は upstream ZMK pointing に寄せて `16-bit X/Y/Wheel/AC Pan` を基本とし、`Resolution Multiplier` feature を含める
 - BLE peer 側に consumer / pointer report が無い場合でも、Keyboard path が成立していれば接続成功として扱う
 - キーボード側の入力意味は標準的な ZMK キーボード利用に合わせて崩さない
 - `Keyboard` と `Consumer Control` は順序重視で送る
@@ -58,6 +59,7 @@ Accepted for MVP
 - descriptor は consumer と横スクロール対応を含む分だけやや複雑になる
 - 一方で BLE 側の bring-up 完了条件は keyboard のみへ寄せられるため、MVP の接続成立性は保ちやすい
 - Mouse については ZMK 既定の 5 ボタン前提に揃えることで、互換性重視の方針に合う
+- smooth scrolling を使う peer とは `Resolution Multiplier` feature を bridge して、Windows 側でも近い粒度を維持しやすくなる
 - `NKRO` を採らないため、6 キー超の通常キー同時押し最適化は MVP では対象外になる
 - movement / wheel は最新重視で扱えるため、ポインタ鮮度を維持しやすい
 - 一方で送出ポリシーが report 種別ごとに異なるため、内部実装は単純な単一 FIFO より少し複雑になる

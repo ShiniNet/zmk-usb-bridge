@@ -29,6 +29,8 @@ enum {
     ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN_COMPACT = 5,
     ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN = 5,
     ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN_EXTENDED = 9,
+    ZMK_USB_BRIDGE_HOG_MOUSE_FEATURE_PAYLOAD_LEN = 1,
+    ZMK_USB_BRIDGE_HOG_MOUSE_RESOLUTION_MAX = 15,
 };
 
 typedef struct {
@@ -65,6 +67,8 @@ typedef struct {
 
 static zmk_usb_bridge_hog_profile_t profile;
 static zmk_usb_bridge_hog_context_t g_ctx;
+static zmk_usb_bridge_mouse_resolution_t g_mouse_resolution;
+static bool g_mouse_resolution_from_host;
 static bool g_input_thread_started;
 static struct k_thread g_input_thread;
 
@@ -80,6 +84,7 @@ static zmk_usb_bridge_status_t start_service_discovery(void);
 static zmk_usb_bridge_status_t start_report_discovery(void);
 static zmk_usb_bridge_status_t start_descriptor_discovery(size_t index);
 static zmk_usb_bridge_status_t start_report_ref_read(size_t index);
+static zmk_usb_bridge_status_t start_mouse_feature_read(void);
 static zmk_usb_bridge_status_t start_subscriptions(void);
 
 static int16_t saturate_mouse_delta_i16(int32_t value) {
@@ -88,6 +93,99 @@ static int16_t saturate_mouse_delta_i16(int32_t value) {
 
 static int8_t saturate_mouse_delta_i8(int16_t value) {
     return (int8_t)CLAMP((int)value, (int)INT8_MIN, (int)INT8_MAX);
+}
+
+static uint8_t clamp_mouse_resolution(uint8_t value) {
+    return MIN(value, (uint8_t)ZMK_USB_BRIDGE_HOG_MOUSE_RESOLUTION_MAX);
+}
+
+static zmk_usb_bridge_hog_report_slot_t *find_slot_by_role(zmk_usb_bridge_report_role_t role) {
+    for (size_t i = 0; i < g_ctx.report_count; i++) {
+        if (g_ctx.reports[i].in_use && g_ctx.reports[i].binding.role == role) {
+            return &g_ctx.reports[i];
+        }
+    }
+
+    return NULL;
+}
+
+static void set_mouse_resolution(uint8_t wheel, uint8_t hor_wheel) {
+    g_mouse_resolution.wheel = clamp_mouse_resolution(wheel);
+    g_mouse_resolution.hor_wheel = clamp_mouse_resolution(hor_wheel);
+}
+
+static zmk_usb_bridge_status_t decode_mouse_feature_payload(
+    const uint8_t *payload,
+    size_t payload_len,
+    zmk_usb_bridge_mouse_resolution_t *resolution
+) {
+    if (payload == NULL || resolution == NULL) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
+    }
+
+    if (payload_len != ZMK_USB_BRIDGE_HOG_MOUSE_FEATURE_PAYLOAD_LEN) {
+        return ZMK_USB_BRIDGE_STATUS_SIZE_MISMATCH;
+    }
+
+    resolution->wheel = clamp_mouse_resolution(payload[0] & 0x0F);
+    resolution->hor_wheel = clamp_mouse_resolution((payload[0] >> 4) & 0x0F);
+    return ZMK_USB_BRIDGE_STATUS_OK;
+}
+
+static void encode_mouse_feature_payload(
+    const zmk_usb_bridge_mouse_resolution_t *resolution,
+    uint8_t *payload
+) {
+    if (resolution == NULL || payload == NULL) {
+        return;
+    }
+
+    payload[0] = (uint8_t)((clamp_mouse_resolution(resolution->hor_wheel) << 4) |
+                           clamp_mouse_resolution(resolution->wheel));
+}
+
+static void write_mouse_feature_to_peer(void) {
+    zmk_usb_bridge_hog_report_slot_t *slot;
+    uint8_t payload[ZMK_USB_BRIDGE_HOG_MOUSE_FEATURE_PAYLOAD_LEN];
+    int err;
+
+    if (g_ctx.conn == NULL) {
+        return;
+    }
+
+    slot = find_slot_by_role(ZMK_USB_BRIDGE_ROLE_MOUSE_FEATURE);
+    if (slot == NULL) {
+        return;
+    }
+
+    if ((slot->properties & BT_GATT_CHRC_WRITE_WITHOUT_RESP) == 0U) {
+        return;
+    }
+
+    encode_mouse_feature_payload(&g_mouse_resolution, payload);
+    err = bt_gatt_write_without_response(
+        g_ctx.conn,
+        slot->binding.value_handle,
+        payload,
+        sizeof(payload),
+        false
+    );
+
+    if (err != 0) {
+        LOG_WRN(
+            "mouse feature write failed handle=0x%04x err=%d",
+            slot->binding.value_handle,
+            err
+        );
+        return;
+    }
+
+    LOG_INF(
+        "mouse resolution synced wheel=%u hor_wheel=%u handle=0x%04x",
+        g_mouse_resolution.wheel,
+        g_mouse_resolution.hor_wheel,
+        slot->binding.value_handle
+    );
 }
 
 static bool mouse_payload_len_supported(size_t payload_len) {
@@ -366,6 +464,16 @@ static zmk_usb_bridge_status_t advance_after_report_ref(void) {
     g_ctx.current_report_index++;
 
     if (g_ctx.current_report_index >= g_ctx.report_count) {
+        if (profile.has_mouse_feature) {
+            zmk_usb_bridge_status_t status = start_mouse_feature_read();
+
+            if (status == ZMK_USB_BRIDGE_STATUS_OK) {
+                return status;
+            }
+
+            LOG_WRN("mouse feature read skipped status=%d", status);
+        }
+
         return start_subscriptions();
     }
 
@@ -429,6 +537,55 @@ static uint8_t on_report_notify(
     }
 
     return BT_GATT_ITER_CONTINUE;
+}
+
+static uint8_t on_mouse_feature_read(
+    struct bt_conn *conn,
+    uint8_t err,
+    struct bt_gatt_read_params *params,
+    const void *data,
+    uint16_t length
+) {
+    zmk_usb_bridge_mouse_resolution_t resolution;
+    zmk_usb_bridge_status_t status;
+
+    ARG_UNUSED(params);
+
+    if (!conn_matches(conn)) {
+        return BT_GATT_ITER_STOP;
+    }
+
+    if (data == NULL) {
+        return BT_GATT_ITER_STOP;
+    }
+
+    if (err != 0U) {
+        LOG_WRN("mouse feature read failed err=%u len=%u", err, length);
+        (void)start_subscriptions();
+        return BT_GATT_ITER_STOP;
+    }
+
+    status = decode_mouse_feature_payload(data, length, &resolution);
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        LOG_WRN("mouse feature payload invalid len=%u status=%d", length, status);
+        (void)start_subscriptions();
+        return BT_GATT_ITER_STOP;
+    }
+
+    if (!g_mouse_resolution_from_host) {
+        set_mouse_resolution(resolution.wheel, resolution.hor_wheel);
+    } else {
+        write_mouse_feature_to_peer();
+    }
+
+    LOG_INF(
+        "mouse resolution detected wheel=%u hor_wheel=%u",
+        g_mouse_resolution.wheel,
+        g_mouse_resolution.hor_wheel
+    );
+
+    (void)start_subscriptions();
+    return BT_GATT_ITER_STOP;
 }
 
 static void on_report_subscribed(
@@ -511,6 +668,13 @@ static uint8_t on_report_ref_read(
     if (slot->binding.role == ZMK_USB_BRIDGE_ROLE_LED_OUTPUT ||
         slot->binding.role == ZMK_USB_BRIDGE_ROLE_MOUSE_FEATURE) {
         set_profile_capability(slot->binding.role, true);
+    }
+
+    if (slot->binding.role == ZMK_USB_BRIDGE_ROLE_MOUSE_FEATURE && !g_mouse_resolution_from_host) {
+        set_mouse_resolution(
+            ZMK_USB_BRIDGE_HOG_MOUSE_RESOLUTION_MAX,
+            ZMK_USB_BRIDGE_HOG_MOUSE_RESOLUTION_MAX
+        );
     }
 
     LOG_INF(
@@ -835,6 +999,33 @@ static zmk_usb_bridge_status_t start_report_ref_read(size_t index) {
     return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
+static zmk_usb_bridge_status_t start_mouse_feature_read(void) {
+    int err;
+    zmk_usb_bridge_hog_report_slot_t *slot = find_slot_by_role(ZMK_USB_BRIDGE_ROLE_MOUSE_FEATURE);
+
+    if (slot == NULL) {
+        return ZMK_USB_BRIDGE_STATUS_NOT_FOUND;
+    }
+
+    if ((slot->properties & BT_GATT_CHRC_READ) == 0U) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
+    }
+
+    memset(&g_ctx.read_params, 0, sizeof(g_ctx.read_params));
+    g_ctx.read_params.func = on_mouse_feature_read;
+    g_ctx.read_params.handle_count = 1U;
+    g_ctx.read_params.single.handle = slot->binding.value_handle;
+    g_ctx.read_params.single.offset = 0U;
+    LOG_INF("read mouse feature handle=0x%04x", slot->binding.value_handle);
+    err = bt_gatt_read(g_ctx.conn, &g_ctx.read_params);
+    if (err != 0) {
+        LOG_WRN("start mouse feature read failed err=%d", err);
+        return (zmk_usb_bridge_status_t)err;
+    }
+
+    return ZMK_USB_BRIDGE_STATUS_OK;
+}
+
 static zmk_usb_bridge_status_t start_subscriptions(void) {
     bool saw_keyboard_candidate = false;
 
@@ -921,6 +1112,8 @@ static zmk_usb_bridge_status_t start_subscriptions(void) {
 zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_init(void) {
     memset(&profile, 0, sizeof(profile));
     memset(&g_ctx, 0, sizeof(g_ctx));
+    memset(&g_mouse_resolution, 0, sizeof(g_mouse_resolution));
+    g_mouse_resolution_from_host = false;
     (void)zmk_usb_bridge_bridge_set_input_active(false);
 
     if (!g_input_thread_started) {
@@ -950,6 +1143,8 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_init(void) {
 
 zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_reset(void) {
     memset(&profile, 0, sizeof(profile));
+    memset(&g_mouse_resolution, 0, sizeof(g_mouse_resolution));
+    g_mouse_resolution_from_host = false;
     (void)zmk_usb_bridge_bridge_set_input_active(false);
     k_msgq_purge(&g_input_queue);
 
@@ -997,6 +1192,23 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_set_profile(
     }
 
     profile = *next_profile;
+    return ZMK_USB_BRIDGE_STATUS_OK;
+}
+
+zmk_usb_bridge_mouse_resolution_t zmk_usb_bridge_hog_client_mouse_resolution(void) {
+    return g_mouse_resolution;
+}
+
+zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_set_mouse_resolution(
+    const zmk_usb_bridge_mouse_resolution_t *resolution
+) {
+    if (resolution == NULL) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
+    }
+
+    set_mouse_resolution(resolution->wheel, resolution->hor_wheel);
+    g_mouse_resolution_from_host = true;
+    write_mouse_feature_to_peer();
     return ZMK_USB_BRIDGE_STATUS_OK;
 }
 

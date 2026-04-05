@@ -1,5 +1,7 @@
 #include "zmk_usb_bridge/usb_bridge.h"
 
+#include "zmk_usb_bridge/hog_client.h"
+
 #include <errno.h>
 #include <string.h>
 #include <zephyr/device.h>
@@ -21,8 +23,21 @@ LOG_MODULE_REGISTER(zub_usb, LOG_LEVEL_INF);
 #define ZMK_USB_BRIDGE_CONSUMER_CONTROL_USAGE 0x01U
 #define ZMK_USB_BRIDGE_CONSUMER_AC_PAN_USAGE_LSB 0x38U
 #define ZMK_USB_BRIDGE_CONSUMER_AC_PAN_USAGE_MSB 0x02U
+#define ZMK_USB_BRIDGE_GEN_DESKTOP_RESOLUTION_MULTIPLIER_USAGE 0x48U
+#define ZMK_USB_BRIDGE_MOUSE_RESOLUTION_MAX 0x0FU
+#define ZMK_USB_BRIDGE_HID_GET_REPORT_TYPE_MASK 0xFF00U
+#define ZMK_USB_BRIDGE_HID_GET_REPORT_ID_MASK 0x00FFU
+#define ZMK_USB_BRIDGE_HID_REPORT_TYPE_INPUT 0x0100U
+#define ZMK_USB_BRIDGE_HID_REPORT_TYPE_OUTPUT 0x0200U
+#define ZMK_USB_BRIDGE_HID_REPORT_TYPE_FEATURE 0x0300U
 #define ZMK_USB_BRIDGE_HID_USAGE16(lsb, msb) \
     HID_ITEM(HID_ITEM_TAG_USAGE, HID_ITEM_TYPE_LOCAL, 2), lsb, msb
+#define ZMK_USB_BRIDGE_HID_PHYSICAL_MIN8(value) \
+    HID_ITEM(HID_ITEM_TAG_PHYSICAL_MIN, HID_ITEM_TYPE_GLOBAL, 1), value
+#define ZMK_USB_BRIDGE_HID_PHYSICAL_MAX8(value) \
+    HID_ITEM(HID_ITEM_TAG_PHYSICAL_MAX, HID_ITEM_TYPE_GLOBAL, 1), value
+#define ZMK_USB_BRIDGE_HID_PUSH HID_ITEM(10, HID_ITEM_TYPE_GLOBAL, 0)
+#define ZMK_USB_BRIDGE_HID_POP HID_ITEM(11, HID_ITEM_TYPE_GLOBAL, 0)
 #define ZMK_USB_BRIDGE_SEND_TIMEOUT K_MSEC(50)
 
 struct zmk_usb_bridge_keyboard_report {
@@ -40,10 +55,15 @@ struct zmk_usb_bridge_consumer_report {
 struct zmk_usb_bridge_mouse_report {
     uint8_t report_id;
     uint8_t buttons;
-    int8_t dx;
-    int8_t dy;
-    int8_t scroll_y;
-    int8_t scroll_x;
+    int16_t dx;
+    int16_t dy;
+    int16_t scroll_y;
+    int16_t scroll_x;
+} __packed;
+
+struct zmk_usb_bridge_mouse_feature_report {
+    uint8_t report_id;
+    uint8_t resolution;
 } __packed;
 
 static const uint8_t zmk_usb_bridge_hid_report_desc[] = {
@@ -114,19 +134,47 @@ static const uint8_t zmk_usb_bridge_hid_report_desc[] = {
     HID_USAGE_PAGE(HID_USAGE_GEN_DESKTOP),
     HID_USAGE(HID_USAGE_GEN_DESKTOP_X),
     HID_USAGE(HID_USAGE_GEN_DESKTOP_Y),
-    HID_USAGE(HID_USAGE_GEN_DESKTOP_WHEEL),
-    HID_LOGICAL_MIN8(-127),
-    HID_LOGICAL_MAX8(127),
-    HID_REPORT_SIZE(8),
-    HID_REPORT_COUNT(3),
+    HID_LOGICAL_MIN16(0x00, 0x80),
+    HID_LOGICAL_MAX16(0xFF, 0x7F),
+    HID_REPORT_SIZE(16),
+    HID_REPORT_COUNT(2),
     HID_INPUT(0x06),
+    HID_COLLECTION(HID_COLLECTION_LOGICAL),
+    HID_USAGE(ZMK_USB_BRIDGE_GEN_DESKTOP_RESOLUTION_MULTIPLIER_USAGE),
+    HID_LOGICAL_MIN8(0),
+    HID_LOGICAL_MAX8(ZMK_USB_BRIDGE_MOUSE_RESOLUTION_MAX),
+    ZMK_USB_BRIDGE_HID_PHYSICAL_MIN8(1),
+    ZMK_USB_BRIDGE_HID_PHYSICAL_MAX8(16),
+    HID_REPORT_SIZE(4),
+    HID_REPORT_COUNT(1),
+    ZMK_USB_BRIDGE_HID_PUSH,
+    HID_FEATURE(0x02),
+    HID_USAGE(HID_USAGE_GEN_DESKTOP_WHEEL),
+    HID_LOGICAL_MIN16(0x00, 0x80),
+    HID_LOGICAL_MAX16(0xFF, 0x7F),
+    ZMK_USB_BRIDGE_HID_PHYSICAL_MIN8(0),
+    ZMK_USB_BRIDGE_HID_PHYSICAL_MAX8(0),
+    HID_REPORT_SIZE(16),
+    HID_REPORT_COUNT(1),
+    HID_INPUT(0x06),
+    HID_END_COLLECTION,
+    HID_COLLECTION(HID_COLLECTION_LOGICAL),
+    HID_USAGE(ZMK_USB_BRIDGE_GEN_DESKTOP_RESOLUTION_MULTIPLIER_USAGE),
+    ZMK_USB_BRIDGE_HID_POP,
+    HID_FEATURE(0x02),
     HID_USAGE_PAGE(ZMK_USB_BRIDGE_CONSUMER_USAGE_PAGE),
     ZMK_USB_BRIDGE_HID_USAGE16(
         ZMK_USB_BRIDGE_CONSUMER_AC_PAN_USAGE_LSB,
         ZMK_USB_BRIDGE_CONSUMER_AC_PAN_USAGE_MSB
     ),
+    HID_LOGICAL_MIN16(0x00, 0x80),
+    HID_LOGICAL_MAX16(0xFF, 0x7F),
+    ZMK_USB_BRIDGE_HID_PHYSICAL_MIN8(0),
+    ZMK_USB_BRIDGE_HID_PHYSICAL_MAX8(0),
+    HID_REPORT_SIZE(16),
     HID_REPORT_COUNT(1),
     HID_INPUT(0x06),
+    HID_END_COLLECTION,
     HID_END_COLLECTION,
     HID_END_COLLECTION,
 };
@@ -137,8 +185,27 @@ static bool g_safe_state_pending;
 static K_SEM_DEFINE(g_usb_in_ready, 1, 1);
 static K_MUTEX_DEFINE(g_usb_lock);
 
-static int8_t saturate_to_i8(int16_t value) {
-    return (int8_t)CLAMP((int)value, (int)INT8_MIN, (int)INT8_MAX);
+static uint8_t encode_mouse_resolution(const zmk_usb_bridge_mouse_resolution_t *resolution) {
+    if (resolution == NULL) {
+        return 0U;
+    }
+
+    return (uint8_t)((MIN(resolution->hor_wheel, (uint8_t)ZMK_USB_BRIDGE_MOUSE_RESOLUTION_MAX)
+                      << 4) |
+                     MIN(resolution->wheel, (uint8_t)ZMK_USB_BRIDGE_MOUSE_RESOLUTION_MAX));
+}
+
+static zmk_usb_bridge_status_t decode_mouse_feature_report(
+    const struct zmk_usb_bridge_mouse_feature_report *report,
+    zmk_usb_bridge_mouse_resolution_t *resolution
+) {
+    if (report == NULL || resolution == NULL) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
+    }
+
+    resolution->wheel = report->resolution & 0x0F;
+    resolution->hor_wheel = (report->resolution >> 4) & 0x0F;
+    return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
 static zmk_usb_bridge_status_t map_usb_error(int err) {
@@ -232,7 +299,82 @@ static void zmk_usb_bridge_usb_ready_cb(const struct device *dev) {
     k_sem_give(&g_usb_in_ready);
 }
 
+static int zmk_usb_bridge_usb_get_report_cb(
+    const struct device *dev,
+    struct usb_setup_packet *setup,
+    int32_t *len,
+    uint8_t **data
+) {
+    static struct zmk_usb_bridge_mouse_feature_report mouse_feature;
+    const zmk_usb_bridge_mouse_resolution_t resolution =
+        zmk_usb_bridge_hog_client_mouse_resolution();
+
+    ARG_UNUSED(dev);
+
+    if ((setup->wValue & ZMK_USB_BRIDGE_HID_GET_REPORT_TYPE_MASK) !=
+        ZMK_USB_BRIDGE_HID_REPORT_TYPE_FEATURE) {
+        return -ENOTSUP;
+    }
+
+    if ((setup->wValue & ZMK_USB_BRIDGE_HID_GET_REPORT_ID_MASK) != ZMK_USB_BRIDGE_MOUSE_REPORT_ID) {
+        return -ENOTSUP;
+    }
+
+    mouse_feature.report_id = ZMK_USB_BRIDGE_MOUSE_REPORT_ID;
+    mouse_feature.resolution = encode_mouse_resolution(&resolution);
+    *len = sizeof(mouse_feature);
+    *data = (uint8_t *)&mouse_feature;
+    return 0;
+}
+
+static int zmk_usb_bridge_usb_set_report_cb(
+    const struct device *dev,
+    struct usb_setup_packet *setup,
+    int32_t *len,
+    uint8_t **data
+) {
+    struct zmk_usb_bridge_mouse_feature_report *report;
+    zmk_usb_bridge_mouse_resolution_t resolution;
+    zmk_usb_bridge_status_t status;
+
+    ARG_UNUSED(dev);
+
+    if ((setup->wValue & ZMK_USB_BRIDGE_HID_GET_REPORT_TYPE_MASK) !=
+        ZMK_USB_BRIDGE_HID_REPORT_TYPE_FEATURE) {
+        return -ENOTSUP;
+    }
+
+    if ((setup->wValue & ZMK_USB_BRIDGE_HID_GET_REPORT_ID_MASK) != ZMK_USB_BRIDGE_MOUSE_REPORT_ID) {
+        return -ENOTSUP;
+    }
+
+    if (*len != (int32_t)sizeof(*report)) {
+        return -EINVAL;
+    }
+
+    report = (struct zmk_usb_bridge_mouse_feature_report *)*data;
+    status = decode_mouse_feature_report(report, &resolution);
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        return -EINVAL;
+    }
+
+    status = zmk_usb_bridge_hog_client_set_mouse_resolution(&resolution);
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        LOG_WRN("mouse feature set failed status=%d", status);
+        return -EIO;
+    }
+
+    LOG_INF(
+        "mouse resolution requested by host wheel=%u hor_wheel=%u",
+        resolution.wheel,
+        resolution.hor_wheel
+    );
+    return 0;
+}
+
 static const struct hid_ops zmk_usb_bridge_hid_ops = {
+    .get_report = zmk_usb_bridge_usb_get_report_cb,
+    .set_report = zmk_usb_bridge_usb_set_report_cb,
     .int_in_ready = zmk_usb_bridge_usb_ready_cb,
 };
 
@@ -363,10 +505,10 @@ zmk_usb_bridge_status_t zmk_usb_bridge_usb_bridge_send_mouse(const zmk_usb_bridg
 
     report.report_id = ZMK_USB_BRIDGE_MOUSE_REPORT_ID;
     report.buttons = body->buttons & BIT_MASK(5);
-    report.dx = saturate_to_i8(body->dx);
-    report.dy = saturate_to_i8(body->dy);
-    report.scroll_y = saturate_to_i8(body->scroll_y);
-    report.scroll_x = saturate_to_i8(body->scroll_x);
+    report.dx = sys_cpu_to_le16((uint16_t)body->dx);
+    report.dy = sys_cpu_to_le16((uint16_t)body->dy);
+    report.scroll_y = sys_cpu_to_le16((uint16_t)body->scroll_y);
+    report.scroll_x = sys_cpu_to_le16((uint16_t)body->scroll_x);
     status = send_report_locked(&report, sizeof(report), "mouse");
     k_mutex_unlock(&g_usb_lock);
     return status;
