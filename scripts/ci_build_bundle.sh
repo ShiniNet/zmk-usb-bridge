@@ -5,6 +5,7 @@ usage() {
     cat <<'EOF'
 Usage:
   ci_build_bundle.sh --workspace-dir DIR --project-dir DIR --artifact-dir DIR
+                     [--debug-artifact-dir DIR]
                      [--profile release|dev-usb-logging]
                      [--board BOARD]
                      [--pristine auto|always|never]
@@ -38,6 +39,15 @@ render_command() {
 copy_if_exists() {
     local src="$1"
     local dest="$2"
+
+    if [[ -f "$src" ]]; then
+        cp -f "$src" "$dest"
+    fi
+}
+
+copy_if_exists_with_index() {
+    local src="$1"
+    local dest="$2"
     local label="$3"
 
     if [[ -f "$src" ]]; then
@@ -46,7 +56,7 @@ copy_if_exists() {
     fi
 }
 
-write_artifact_readme() {
+write_user_readme() {
     local readme_file="$1"
     local flash_target="zephyr.uf2"
 
@@ -58,11 +68,10 @@ Profile: $PROFILE
 Board:   $BOARD
 Status:  $BUILD_STATUS
 
-Main files
-----------
+Included files
+--------------
 - $flash_target : main firmware for Seeed XIAO nRF52840 drag-and-drop flashing
-- zephyr.hex    : fallback image for probe/debug workflows
-- build_meta.json / command.txt / build.log : reproducibility and troubleshooting data
+- README.txt : short flashing guide
 
 Flash steps
 -----------
@@ -73,8 +82,36 @@ Flash steps
 
 Notes
 -----
-- The default end-user artifact is the release profile.
-- The dev-usb-logging profile keeps USB logging enabled for bring-up and debugging.
+- This artifact is intentionally minimal for end users.
+- If you need logs, config snapshots, ELF, HEX, or build metadata, download the matching debug artifact.
+EOF
+
+    if [[ -n "${GITHUB_SERVER_URL:-}" ]] && [[ -n "${GITHUB_REPOSITORY:-}" ]] && [[ -n "${GITHUB_RUN_ID:-}" ]]; then
+        cat >>"$readme_file" <<EOF
+- Source run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+EOF
+    fi
+}
+
+write_debug_readme() {
+    local readme_file="$1"
+
+    cat >"$readme_file" <<EOF
+zmk-usb-bridge debug artifact
+=============================
+
+Profile: $PROFILE
+Board:   $BOARD
+Status:  $BUILD_STATUS
+
+This artifact keeps the full build outputs for troubleshooting and reproducibility.
+
+Typical files
+-------------
+- zephyr.uf2 / zephyr.hex : flashable images
+- zephyr.elf / zephyr.map : debug symbols and memory map
+- zephyr.config / zephyr.dts : resolved build inputs
+- build.log / command.txt / build_meta.json : CI trace and build metadata
 EOF
 
     if [[ -n "${GITHUB_SERVER_URL:-}" ]] && [[ -n "${GITHUB_REPOSITORY:-}" ]] && [[ -n "${GITHUB_RUN_ID:-}" ]]; then
@@ -99,6 +136,7 @@ WORKSPACE_DIR=""
 PROJECT_DIR=""
 BUILD_DIR=""
 ARTIFACT_DIR=""
+DEBUG_ARTIFACT_DIR=""
 RUN_ID=""
 
 while [[ $# -gt 0 ]]; do
@@ -113,6 +151,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --artifact-dir)
             ARTIFACT_DIR="${2:?missing value for --artifact-dir}"
+            shift 2
+            ;;
+        --debug-artifact-dir)
+            DEBUG_ARTIFACT_DIR="${2:?missing value for --debug-artifact-dir}"
             shift 2
             ;;
         --profile)
@@ -193,12 +235,19 @@ if [[ ! -d "$PROJECT_DIR" ]]; then
 fi
 
 mkdir -p "$ARTIFACT_DIR"
+if [[ -n "$DEBUG_ARTIFACT_DIR" ]]; then
+    mkdir -p "$DEBUG_ARTIFACT_DIR"
+fi
 
-BUILD_LOG="$ARTIFACT_DIR/build.log"
-COMMAND_FILE="$ARTIFACT_DIR/command.txt"
-META_FILE="$ARTIFACT_DIR/build_meta.json"
-OUTPUTS_FILE="$ARTIFACT_DIR/outputs.txt"
-README_FILE="$ARTIFACT_DIR/README.txt"
+STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zmk-usb-bridge-artifact.XXXXXX")"
+trap 'rm -rf "$STAGING_DIR"' EXIT
+
+BUILD_LOG="$STAGING_DIR/build.log"
+COMMAND_FILE="$STAGING_DIR/command.txt"
+META_FILE="$STAGING_DIR/build_meta.json"
+OUTPUTS_FILE="$STAGING_DIR/outputs.txt"
+USER_README_FILE="$STAGING_DIR/README.txt"
+DEBUG_README_FILE="$STAGING_DIR/README.debug.txt"
 
 GIT_HEAD="$(git -C "$PROJECT_DIR" rev-parse HEAD 2>/dev/null || printf 'unknown')"
 if [[ -n "$(git -C "$PROJECT_DIR" status --short 2>/dev/null || true)" ]]; then
@@ -226,7 +275,10 @@ printf 'Building profile=%s board=%s\n' "$PROFILE" "$BOARD"
 printf 'Workspace: %s\n' "$WORKSPACE_DIR"
 printf 'Project:   %s\n' "$PROJECT_DIR"
 printf 'Build dir: %s\n' "$BUILD_DIR"
-printf 'Artifacts: %s\n' "$ARTIFACT_DIR"
+printf 'Primary artifact: %s\n' "$ARTIFACT_DIR"
+if [[ -n "$DEBUG_ARTIFACT_DIR" ]]; then
+    printf 'Debug artifact:   %s\n' "$DEBUG_ARTIFACT_DIR"
+fi
 
 BUILD_STATUS="failed"
 if (
@@ -236,17 +288,17 @@ if (
     BUILD_STATUS="success"
 fi
 
-copy_if_exists "$BUILD_DIR/zephyr/zephyr.uf2" "$ARTIFACT_DIR/zephyr.uf2" "zephyr.uf2"
-copy_if_exists "$BUILD_DIR/zephyr/zephyr.hex" "$ARTIFACT_DIR/zephyr.hex" "zephyr.hex"
-copy_if_exists "$BUILD_DIR/zephyr/zephyr.bin" "$ARTIFACT_DIR/zephyr.bin" "zephyr.bin"
-copy_if_exists "$BUILD_DIR/zephyr/zephyr.elf" "$ARTIFACT_DIR/zephyr.elf" "zephyr.elf"
-copy_if_exists "$BUILD_DIR/zephyr/zephyr.map" "$ARTIFACT_DIR/zephyr.map" "zephyr.map"
-copy_if_exists "$BUILD_DIR/zephyr/.config" "$ARTIFACT_DIR/zephyr.config" "zephyr.config"
-copy_if_exists "$BUILD_DIR/zephyr/zephyr.dts" "$ARTIFACT_DIR/zephyr.dts" "zephyr.dts"
-copy_if_exists "$BUILD_DIR/compile_commands.json" "$ARTIFACT_DIR/compile_commands.json" "compile_commands.json"
+copy_if_exists_with_index "$BUILD_DIR/zephyr/zephyr.uf2" "$STAGING_DIR/zephyr.uf2" "zephyr.uf2"
+copy_if_exists_with_index "$BUILD_DIR/zephyr/zephyr.hex" "$STAGING_DIR/zephyr.hex" "zephyr.hex"
+copy_if_exists_with_index "$BUILD_DIR/zephyr/zephyr.bin" "$STAGING_DIR/zephyr.bin" "zephyr.bin"
+copy_if_exists_with_index "$BUILD_DIR/zephyr/zephyr.elf" "$STAGING_DIR/zephyr.elf" "zephyr.elf"
+copy_if_exists_with_index "$BUILD_DIR/zephyr/zephyr.map" "$STAGING_DIR/zephyr.map" "zephyr.map"
+copy_if_exists_with_index "$BUILD_DIR/zephyr/.config" "$STAGING_DIR/zephyr.config" "zephyr.config"
+copy_if_exists_with_index "$BUILD_DIR/zephyr/zephyr.dts" "$STAGING_DIR/zephyr.dts" "zephyr.dts"
+copy_if_exists_with_index "$BUILD_DIR/compile_commands.json" "$STAGING_DIR/compile_commands.json" "compile_commands.json"
 
-write_artifact_readme "$README_FILE"
-printf 'README.txt\t%s\n' "$README_FILE" >>"$OUTPUTS_FILE"
+write_user_readme "$USER_README_FILE"
+write_debug_readme "$DEBUG_README_FILE"
 
 cat >"$META_FILE" <<EOF
 {
@@ -275,8 +327,35 @@ printf 'build_meta.json\t%s\n' "$META_FILE" >>"$OUTPUTS_FILE"
 printf 'build.log\t%s\n' "$BUILD_LOG" >>"$OUTPUTS_FILE"
 printf 'command.txt\t%s\n' "$COMMAND_FILE" >>"$OUTPUTS_FILE"
 
+rm -f "$ARTIFACT_DIR"/*
+copy_if_exists "$STAGING_DIR/zephyr.uf2" "$ARTIFACT_DIR/zephyr.uf2"
+copy_if_exists "$USER_README_FILE" "$ARTIFACT_DIR/README.txt"
+
+if [[ -n "$DEBUG_ARTIFACT_DIR" ]]; then
+    rm -f "$DEBUG_ARTIFACT_DIR"/*
+    while IFS=$'\t' read -r label artifact_path; do
+        if [[ -n "$artifact_path" && -f "$artifact_path" ]]; then
+            cp -f "$artifact_path" "$DEBUG_ARTIFACT_DIR/$(basename "$artifact_path")"
+        fi
+    done <"$OUTPUTS_FILE"
+    copy_if_exists "$DEBUG_README_FILE" "$DEBUG_ARTIFACT_DIR/README.txt"
+fi
+
+if [[ "$PROFILE" != "release" ]]; then
+    rm -f "$ARTIFACT_DIR"/*
+    while IFS=$'\t' read -r label artifact_path; do
+        if [[ -n "$artifact_path" && -f "$artifact_path" ]]; then
+            cp -f "$artifact_path" "$ARTIFACT_DIR/$(basename "$artifact_path")"
+        fi
+    done <"$OUTPUTS_FILE"
+    copy_if_exists "$DEBUG_README_FILE" "$ARTIFACT_DIR/README.txt"
+fi
+
 printf 'Build %s.\n' "$BUILD_STATUS"
-printf 'Artifact directory: %s\n' "$ARTIFACT_DIR"
+printf 'Primary artifact directory: %s\n' "$ARTIFACT_DIR"
+if [[ -n "$DEBUG_ARTIFACT_DIR" ]]; then
+    printf 'Debug artifact directory: %s\n' "$DEBUG_ARTIFACT_DIR"
+fi
 
 if [[ "$BUILD_STATUS" != "success" ]]; then
     exit 1

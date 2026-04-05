@@ -49,7 +49,8 @@ PC とは USB HID デバイスとして接続し、キーボードとは BLE で
 4. Actions の実行結果から artifact をダウンロードする
 5. 展開した artifact 内の `zephyr.uf2` を board の bootloader drive へコピーする
 
-標準 artifact は `release profile` で、`zephyr.uf2` に加えて `zephyr.hex`、`build.log`、`command.txt`、`build_meta.json`、`README.txt` を含みます。
+標準の `release profile` artifact は、利用者向けに `zephyr.uf2` と `README.txt` だけを含む最小構成です。
+調査用の追加成果物が必要な場合は、同じ run に含まれる `-debug` artifact を使います。
 bring-up 用には `workflow_dispatch` から `dev-usb-logging` profile も選べます。
 
 ## 備考

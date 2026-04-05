@@ -80,7 +80,11 @@ jobs:
           matrix='['
           for profile in "${profiles[@]}"; do
             artifact_name="zmk-usb-bridge-${profile}-seeeduino_xiao_ble"
-            matrix+="{\"board\":\"seeeduino_xiao_ble\",\"profile\":\"${profile}\",\"artifact_name\":\"${artifact_name}\"},"
+            debug_artifact_name=""
+            if [[ "$profile" == "release" ]]; then
+              debug_artifact_name="${artifact_name}-debug"
+            fi
+            matrix+="{\"board\":\"seeeduino_xiao_ble\",\"profile\":\"${profile}\",\"artifact_name\":\"${artifact_name}\",\"debug_artifact_name\":\"${debug_artifact_name}\"},"
           done
           matrix="${matrix%,}]"
 
@@ -134,12 +138,20 @@ jobs:
           PROFILE: ${{ matrix.profile }}
           BOARD: ${{ matrix.board }}
           ARTIFACT_NAME: ${{ matrix.artifact_name }}
+          DEBUG_ARTIFACT_NAME: ${{ matrix.debug_artifact_name }}
         run: |
           mkdir -p "artifacts/${ARTIFACT_NAME}"
+          debug_args=()
+          if [[ -n "${DEBUG_ARTIFACT_NAME}" ]]; then
+            mkdir -p "artifacts/${DEBUG_ARTIFACT_NAME}"
+            debug_args+=(--debug-artifact-dir "${GITHUB_WORKSPACE}/artifacts/${DEBUG_ARTIFACT_NAME}")
+          fi
+
           zmk-usb-bridge/scripts/ci_build_bundle.sh \
             --workspace-dir "${GITHUB_WORKSPACE}" \
             --project-dir "${GITHUB_WORKSPACE}/zmk-usb-bridge" \
             --artifact-dir "${GITHUB_WORKSPACE}/artifacts/${ARTIFACT_NAME}" \
+            "${debug_args[@]}" \
             --profile "${PROFILE}" \
             --board "${BOARD}" \
             --pristine always \
@@ -150,5 +162,14 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: artifacts/${{ matrix.artifact_name }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload ${{ matrix.profile }} debug artifact
+        if: ${{ matrix.debug_artifact_name != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.debug_artifact_name }}
+          path: artifacts/${{ matrix.debug_artifact_name }}
           if-no-files-found: error
           retention-days: 14

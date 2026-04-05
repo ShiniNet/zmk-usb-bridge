@@ -109,9 +109,10 @@
 - `push` と `pull_request` では `release profile` を標準 build とする
 - `workflow_dispatch` では `release`、`dev-usb-logging`、`all` を選べるようにする
 - 配布単位の第一候補は `workflow artifact`
-- 標準 artifact は `release profile` の build 結果を格納する
+- 標準 artifact は `release profile` の利用者向け最小成果物だけを格納する
 - `Seeed XIAO nRF52840` 向けの主導線は `zephyr.uf2` とする
-- 補助導線として `zephyr.hex` と build metadata を含める
+- `release profile` の標準 artifact は `zephyr.uf2` と `README.txt` だけに絞る
+- 補助導線の `zephyr.hex`、`zephyr.elf`、config/dts、build metadata は別名の `-debug artifact` に分離する
 - artifact には `README.txt` を同梱し、最短の書き込み手順を一緒に配布する
 - ローカル build script も `zephyr.uf2`、`zephyr.hex`、`zephyr.elf`、`zephyr.map`、config/dts と build metadata を残す
 - 外部 debug probe 利用者向けには `west flash` 前提の補助手順を許容する
