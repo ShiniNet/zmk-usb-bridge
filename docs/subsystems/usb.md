@@ -39,7 +39,11 @@
 - 現在の descriptor は `single HID interface + report IDs` で `Keyboard(1) + Consumer(2) + Mouse(3)` を提示する
 - Consumer Control は `16-bit single usage`、Pointer は `relative X/Y + wheel + AC Pan` を `8-bit` 幅で送る
 - bridge 内部では mouse 値を `int16_t` で保持し、USB 送信時に飽和させる
+- HOG mouse input は peer 実装差を許容し、`compact 5-byte` と `buttons + 4x s16le = 9-byte` の両方を受けられるようにする
 - host 未構成時は report を破棄し、構成後に列挙確認と safe-state 送出を優先する
+- HOG input は `HID ready` 以後だけ bridge へ通し、disconnect / bond erase / reset 後は stale notification を破棄する
+- mouse の集約は `HOG input queue` 上で `連続かつ同一 buttons 状態` の report だけを対象にし、button 変化や keyboard / consumer をまたいで畳まない
+- host 未構成中に要求された `all release` は pending として保持し、再構成後の最初の通常 report より先に flush する
 
 ## Presentation Model
 
@@ -104,6 +108,8 @@
 - `Keyboard` と `Consumer Control` は最新上書きではなく、状態遷移を壊さないことを優先する
 - `Mouse movement / wheel` は高頻度更新をそのまま全部送らず、次送信までに集約してよい
 - `Mouse buttons` は movement 集約に巻き込まず、明示的な状態変化として扱う
+- 現行実装では dedicated USB worker をまだ置かず、`HOG input worker` が queue から取り出す直前に contiguous な mouse report を集約する
+- そのため集約範囲は `すでに queue に積まれている連続 mouse report` に限り、time-based flush や cross-role reordering は行わない
 
 ### Priority Rules
 
@@ -119,6 +125,8 @@
 - その後に `mouse button release all` と `zero movement / zero scroll` を送る
 - bond erase 時も同様に USB 側を安全状態へ戻してから再ペアリングへ進む
 - 再接続待機中に新しい入力を送らない
+- HOG client reset 時点で bridge の入力受付を閉じ、message queue に残っていた旧 connection 由来の notification も USB へ渡さない
+- USB host が未構成で即時送信できない場合は `all release` 要求を保持し、次に通常 report を送る前に safe-state を優先 flush する
 
 ## Zephyr 実装境界
 
@@ -142,6 +150,8 @@
 - 単一 interface 上での report 長差をどう管理するか
 - 通常 report の破棄 / 再構成をどこまで許容するか
 - `Zephyr USB device stack` 上で composite HID をどう構成するか
+- 現行の queue-drain 型 mouse 集約で十分か、専用 USB TX worker へ進めるか
+- Consumer usage の許容範囲を `16-bit single usage` のまま固定するか、Windows 実測で allowlist を追加するか
 
 ## Failure Handling
 

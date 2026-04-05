@@ -23,6 +23,7 @@ typedef struct {
 
 zmk_usb_bridge_status_t zmk_usb_bridge_bridge_init(void);
 zmk_usb_bridge_status_t zmk_usb_bridge_bridge_reset_state(void);
+zmk_usb_bridge_status_t zmk_usb_bridge_bridge_set_input_active(bool active);
 zmk_usb_bridge_status_t zmk_usb_bridge_bridge_release_all(void);
 zmk_usb_bridge_status_t zmk_usb_bridge_bridge_handle_input(
     zmk_usb_bridge_report_role_t role,

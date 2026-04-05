@@ -12,20 +12,23 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(zub_hog, LOG_LEVEL_INF);
 
 enum {
     ZMK_USB_BRIDGE_HOG_MAX_REPORTS = 8,
-    ZMK_USB_BRIDGE_HOG_INPUT_MAX_LEN = 8,
+    ZMK_USB_BRIDGE_HOG_INPUT_MAX_LEN = 16,
     ZMK_USB_BRIDGE_HOG_INPUT_QUEUE_DEPTH = 32,
     ZMK_USB_BRIDGE_HOG_INPUT_TASK_STACK_SIZE = 1536,
     ZMK_USB_BRIDGE_HOG_INPUT_TASK_PRIORITY = 6,
     ZMK_USB_BRIDGE_HOG_KEYBOARD_REPORT_ID = 1,
     ZMK_USB_BRIDGE_HOG_CONSUMER_REPORT_ID = 2,
     ZMK_USB_BRIDGE_HOG_MOUSE_REPORT_ID = 3,
+    ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN_COMPACT = 5,
     ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN = 5,
+    ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN_EXTENDED = 9,
 };
 
 typedef struct {
@@ -78,6 +81,148 @@ static zmk_usb_bridge_status_t start_report_discovery(void);
 static zmk_usb_bridge_status_t start_descriptor_discovery(size_t index);
 static zmk_usb_bridge_status_t start_report_ref_read(size_t index);
 static zmk_usb_bridge_status_t start_subscriptions(void);
+
+static int16_t saturate_mouse_delta_i16(int32_t value) {
+    return (int16_t)CLAMP((int)value, (int)INT16_MIN, (int)INT16_MAX);
+}
+
+static int8_t saturate_mouse_delta_i8(int16_t value) {
+    return (int8_t)CLAMP((int)value, (int)INT8_MIN, (int)INT8_MAX);
+}
+
+static bool mouse_payload_len_supported(size_t payload_len) {
+    return payload_len == ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN_COMPACT ||
+           payload_len == ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN_EXTENDED;
+}
+
+static bool event_is_mouse_input(const zmk_usb_bridge_hog_input_event_t *event) {
+    return event != NULL && event->role == ZMK_USB_BRIDGE_ROLE_MOUSE_INPUT &&
+           mouse_payload_len_supported(event->payload_len);
+}
+
+static zmk_usb_bridge_status_t decode_mouse_payload(
+    const uint8_t *payload,
+    size_t payload_len,
+    zmk_usb_bridge_mouse_body_t *mouse
+) {
+    if (payload == NULL || mouse == NULL) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
+    }
+
+    if (payload_len == ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN_COMPACT) {
+        const int8_t *compact = (const int8_t *)payload;
+
+        *mouse = (zmk_usb_bridge_mouse_body_t) {
+            .buttons = payload[0],
+            .dx = compact[1],
+            .dy = compact[2],
+            .scroll_y = compact[3],
+            .scroll_x = compact[4],
+        };
+        return ZMK_USB_BRIDGE_STATUS_OK;
+    }
+
+    if (payload_len == ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN_EXTENDED) {
+        *mouse = (zmk_usb_bridge_mouse_body_t) {
+            .buttons = payload[0],
+            .dx = (int16_t)sys_get_le16(&payload[1]),
+            .dy = (int16_t)sys_get_le16(&payload[3]),
+            .scroll_y = (int16_t)sys_get_le16(&payload[5]),
+            .scroll_x = (int16_t)sys_get_le16(&payload[7]),
+        };
+        return ZMK_USB_BRIDGE_STATUS_OK;
+    }
+
+    return ZMK_USB_BRIDGE_STATUS_SIZE_MISMATCH;
+}
+
+static zmk_usb_bridge_status_t encode_mouse_payload(
+    const zmk_usb_bridge_mouse_body_t *mouse,
+    uint8_t *payload,
+    size_t payload_len
+) {
+    if (mouse == NULL || payload == NULL) {
+        return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
+    }
+
+    if (payload_len == ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN_COMPACT) {
+        payload[0] = mouse->buttons;
+        payload[1] = (uint8_t)saturate_mouse_delta_i8(mouse->dx);
+        payload[2] = (uint8_t)saturate_mouse_delta_i8(mouse->dy);
+        payload[3] = (uint8_t)saturate_mouse_delta_i8(mouse->scroll_y);
+        payload[4] = (uint8_t)saturate_mouse_delta_i8(mouse->scroll_x);
+        return ZMK_USB_BRIDGE_STATUS_OK;
+    }
+
+    if (payload_len == ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN_EXTENDED) {
+        payload[0] = mouse->buttons;
+        sys_put_le16((uint16_t)mouse->dx, &payload[1]);
+        sys_put_le16((uint16_t)mouse->dy, &payload[3]);
+        sys_put_le16((uint16_t)mouse->scroll_y, &payload[5]);
+        sys_put_le16((uint16_t)mouse->scroll_x, &payload[7]);
+        return ZMK_USB_BRIDGE_STATUS_OK;
+    }
+
+    return ZMK_USB_BRIDGE_STATUS_SIZE_MISMATCH;
+}
+
+static bool mouse_events_can_merge(
+    const zmk_usb_bridge_hog_input_event_t *event,
+    const zmk_usb_bridge_hog_input_event_t *next
+) {
+    return event_is_mouse_input(event) && event_is_mouse_input(next) &&
+           event->payload_len == next->payload_len && event->payload[0] == next->payload[0];
+}
+
+static void accumulate_mouse_event(
+    zmk_usb_bridge_hog_input_event_t *event,
+    const zmk_usb_bridge_hog_input_event_t *next
+) {
+    zmk_usb_bridge_mouse_body_t current_mouse;
+    zmk_usb_bridge_mouse_body_t next_mouse;
+
+    if (!mouse_events_can_merge(event, next)) {
+        return;
+    }
+
+    if (decode_mouse_payload(event->payload, event->payload_len, &current_mouse) !=
+            ZMK_USB_BRIDGE_STATUS_OK ||
+        decode_mouse_payload(next->payload, next->payload_len, &next_mouse) !=
+            ZMK_USB_BRIDGE_STATUS_OK) {
+        return;
+    }
+
+    current_mouse.dx = saturate_mouse_delta_i16((int32_t)current_mouse.dx + next_mouse.dx);
+    current_mouse.dy = saturate_mouse_delta_i16((int32_t)current_mouse.dy + next_mouse.dy);
+    current_mouse.scroll_y =
+        saturate_mouse_delta_i16((int32_t)current_mouse.scroll_y + next_mouse.scroll_y);
+    current_mouse.scroll_x =
+        saturate_mouse_delta_i16((int32_t)current_mouse.scroll_x + next_mouse.scroll_x);
+
+    (void)encode_mouse_payload(&current_mouse, event->payload, event->payload_len);
+}
+
+static void merge_contiguous_mouse_events(
+    zmk_usb_bridge_hog_input_event_t *event,
+    zmk_usb_bridge_hog_input_event_t *deferred_event,
+    bool *has_deferred_event
+) {
+    zmk_usb_bridge_hog_input_event_t next;
+
+    if (!event_is_mouse_input(event) || deferred_event == NULL || has_deferred_event == NULL) {
+        return;
+    }
+
+    while (k_msgq_get(&g_input_queue, &next, K_NO_WAIT) == 0) {
+        if (!mouse_events_can_merge(event, &next)) {
+            *deferred_event = next;
+            *has_deferred_event = true;
+            return;
+        }
+
+        accumulate_mouse_event(event, &next);
+    }
+}
 
 static bool conn_matches(const struct bt_conn *conn) {
     return g_ctx.conn != NULL && conn == g_ctx.conn;
@@ -149,23 +294,16 @@ static zmk_usb_bridge_status_t bridge_queued_input(
     case ZMK_USB_BRIDGE_ROLE_KEYBOARD_INPUT:
     case ZMK_USB_BRIDGE_ROLE_CONSUMER_INPUT:
         return zmk_usb_bridge_bridge_handle_input(role, payload, payload_len);
-    case ZMK_USB_BRIDGE_ROLE_MOUSE_INPUT:
-        if (payload_len != ZMK_USB_BRIDGE_HOG_MOUSE_PAYLOAD_LEN) {
-            return ZMK_USB_BRIDGE_STATUS_SIZE_MISMATCH;
+    case ZMK_USB_BRIDGE_ROLE_MOUSE_INPUT: {
+        zmk_usb_bridge_mouse_body_t mouse;
+        zmk_usb_bridge_status_t status = decode_mouse_payload(payload, payload_len, &mouse);
+
+        if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+            return status;
         }
 
-        {
-            const int8_t *mouse_payload = (const int8_t *)payload;
-            const zmk_usb_bridge_mouse_body_t mouse = {
-                .buttons = payload[0],
-                .dx = mouse_payload[1],
-                .dy = mouse_payload[2],
-                .scroll_y = mouse_payload[3],
-                .scroll_x = mouse_payload[4],
-            };
-
-            return zmk_usb_bridge_bridge_handle_input(role, &mouse, sizeof(mouse));
-        }
+        return zmk_usb_bridge_bridge_handle_input(role, &mouse, sizeof(mouse));
+    }
     default:
         return ZMK_USB_BRIDGE_STATUS_OK;
     }
@@ -177,10 +315,19 @@ static void hog_input_task(void *arg1, void *arg2, void *arg3) {
     ARG_UNUSED(arg3);
 
     zmk_usb_bridge_hog_input_event_t event;
+    zmk_usb_bridge_hog_input_event_t deferred_event;
+    bool has_deferred_event = false;
 
     while (true) {
-        if (k_msgq_get(&g_input_queue, &event, K_FOREVER) != 0) {
+        if (has_deferred_event) {
+            event = deferred_event;
+            has_deferred_event = false;
+        } else if (k_msgq_get(&g_input_queue, &event, K_FOREVER) != 0) {
             continue;
+        }
+
+        if (event_is_mouse_input(&event)) {
+            merge_contiguous_mouse_events(&event, &deferred_event, &has_deferred_event);
         }
 
         const zmk_usb_bridge_status_t status = bridge_queued_input(
@@ -774,6 +921,7 @@ static zmk_usb_bridge_status_t start_subscriptions(void) {
 zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_init(void) {
     memset(&profile, 0, sizeof(profile));
     memset(&g_ctx, 0, sizeof(g_ctx));
+    (void)zmk_usb_bridge_bridge_set_input_active(false);
 
     if (!g_input_thread_started) {
         k_tid_t tid = k_thread_create(
@@ -802,6 +950,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_init(void) {
 
 zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_reset(void) {
     memset(&profile, 0, sizeof(profile));
+    (void)zmk_usb_bridge_bridge_set_input_active(false);
     k_msgq_purge(&g_input_queue);
 
     if (g_ctx.conn != NULL) {
@@ -856,6 +1005,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_complete_discovery(uint16_t co
     (void)zmk_usb_bridge_ble_reconnect_note_connected();
 
     if (!zmk_usb_bridge_hog_client_ready()) {
+        (void)zmk_usb_bridge_bridge_set_input_active(false);
         return zmk_usb_bridge_ble_manager_post_event_with_payload(
             ZMK_USB_BRIDGE_EVENT_HID_FAILURE,
             ZMK_USB_BRIDGE_EVENT_REASON_HID_REPORT_MISSING,
@@ -865,6 +1015,7 @@ zmk_usb_bridge_status_t zmk_usb_bridge_hog_client_complete_discovery(uint16_t co
         );
     }
 
+    (void)zmk_usb_bridge_bridge_set_input_active(true);
     return zmk_usb_bridge_ble_manager_post_event_with_payload(
         ZMK_USB_BRIDGE_EVENT_HID_READY,
         ZMK_USB_BRIDGE_EVENT_REASON_NONE,

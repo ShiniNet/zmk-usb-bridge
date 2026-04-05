@@ -133,7 +133,9 @@ static const uint8_t zmk_usb_bridge_hid_report_desc[] = {
 
 static const struct device *g_hid_dev;
 static bool g_usb_configured;
+static bool g_safe_state_pending;
 static K_SEM_DEFINE(g_usb_in_ready, 1, 1);
+static K_MUTEX_DEFINE(g_usb_lock);
 
 static int8_t saturate_to_i8(int16_t value) {
     return (int8_t)CLAMP((int)value, (int)INT8_MIN, (int)INT8_MAX);
@@ -155,7 +157,11 @@ static zmk_usb_bridge_status_t map_usb_error(int err) {
     }
 }
 
-static zmk_usb_bridge_status_t send_report(const void *report, size_t report_len, const char *label) {
+static zmk_usb_bridge_status_t send_report_locked(
+    const void *report,
+    size_t report_len,
+    const char *label
+) {
     uint32_t wrote = 0;
     int ret;
 
@@ -182,6 +188,42 @@ static zmk_usb_bridge_status_t send_report(const void *report, size_t report_len
         return ZMK_USB_BRIDGE_STATUS_INVALID_STATE;
     }
 
+    return ZMK_USB_BRIDGE_STATUS_OK;
+}
+
+static zmk_usb_bridge_status_t flush_safe_state_locked(void) {
+    const struct zmk_usb_bridge_keyboard_report keyboard = {
+        .report_id = ZMK_USB_BRIDGE_KEYBOARD_REPORT_ID,
+    };
+    const struct zmk_usb_bridge_consumer_report consumer = {
+        .report_id = ZMK_USB_BRIDGE_CONSUMER_REPORT_ID,
+        .usage = 0U,
+    };
+    const struct zmk_usb_bridge_mouse_report mouse = {
+        .report_id = ZMK_USB_BRIDGE_MOUSE_REPORT_ID,
+    };
+    zmk_usb_bridge_status_t status;
+
+    if (!g_safe_state_pending || !g_usb_configured) {
+        return ZMK_USB_BRIDGE_STATUS_OK;
+    }
+
+    status = send_report_locked(&keyboard, sizeof(keyboard), "keyboard release");
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        return status;
+    }
+
+    status = send_report_locked(&consumer, sizeof(consumer), "consumer release");
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        return status;
+    }
+
+    status = send_report_locked(&mouse, sizeof(mouse), "mouse release");
+    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
+        return status;
+    }
+
+    g_safe_state_pending = false;
     return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
@@ -253,41 +295,70 @@ zmk_usb_bridge_status_t zmk_usb_bridge_usb_bridge_init(void) {
     }
 
     g_usb_configured = false;
+    g_safe_state_pending = true;
     LOG_INF("USB HID spike initialized");
     return ZMK_USB_BRIDGE_STATUS_OK;
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_usb_bridge_send_keyboard(const zmk_usb_bridge_keyboard_body_t *body) {
     struct zmk_usb_bridge_keyboard_report report;
+    zmk_usb_bridge_status_t status;
 
     if (body == NULL) {
         return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
+    }
+
+    k_mutex_lock(&g_usb_lock, K_FOREVER);
+    status = flush_safe_state_locked();
+    if (status != ZMK_USB_BRIDGE_STATUS_OK || !g_usb_configured) {
+        k_mutex_unlock(&g_usb_lock);
+        return status;
     }
 
     report.report_id = ZMK_USB_BRIDGE_KEYBOARD_REPORT_ID;
     report.modifiers = body->modifiers;
     report.reserved = body->reserved;
     memcpy(report.keys, body->keys, sizeof(report.keys));
-    return send_report(&report, sizeof(report), "keyboard");
+    status = send_report_locked(&report, sizeof(report), "keyboard");
+    k_mutex_unlock(&g_usb_lock);
+    return status;
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_usb_bridge_send_consumer(const zmk_usb_bridge_consumer_body_t *body) {
     struct zmk_usb_bridge_consumer_report report;
+    zmk_usb_bridge_status_t status;
 
     if (body == NULL) {
         return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
     }
 
+    k_mutex_lock(&g_usb_lock, K_FOREVER);
+    status = flush_safe_state_locked();
+    if (status != ZMK_USB_BRIDGE_STATUS_OK || !g_usb_configured) {
+        k_mutex_unlock(&g_usb_lock);
+        return status;
+    }
+
     report.report_id = ZMK_USB_BRIDGE_CONSUMER_REPORT_ID;
     report.usage = sys_cpu_to_le16(body->usage);
-    return send_report(&report, sizeof(report), "consumer");
+    status = send_report_locked(&report, sizeof(report), "consumer");
+    k_mutex_unlock(&g_usb_lock);
+    return status;
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_usb_bridge_send_mouse(const zmk_usb_bridge_mouse_body_t *body) {
     struct zmk_usb_bridge_mouse_report report;
+    zmk_usb_bridge_status_t status;
 
     if (body == NULL) {
         return ZMK_USB_BRIDGE_STATUS_INVALID_ARGUMENT;
+    }
+
+    k_mutex_lock(&g_usb_lock, K_FOREVER);
+    status = flush_safe_state_locked();
+    if (status != ZMK_USB_BRIDGE_STATUS_OK || !g_usb_configured) {
+        k_mutex_unlock(&g_usb_lock);
+        return status;
     }
 
     report.report_id = ZMK_USB_BRIDGE_MOUSE_REPORT_ID;
@@ -296,24 +367,17 @@ zmk_usb_bridge_status_t zmk_usb_bridge_usb_bridge_send_mouse(const zmk_usb_bridg
     report.dy = saturate_to_i8(body->dy);
     report.scroll_y = saturate_to_i8(body->scroll_y);
     report.scroll_x = saturate_to_i8(body->scroll_x);
-    return send_report(&report, sizeof(report), "mouse");
+    status = send_report_locked(&report, sizeof(report), "mouse");
+    k_mutex_unlock(&g_usb_lock);
+    return status;
 }
 
 zmk_usb_bridge_status_t zmk_usb_bridge_usb_bridge_release_all(void) {
-    const zmk_usb_bridge_keyboard_body_t keyboard = {0};
-    const zmk_usb_bridge_consumer_body_t consumer = {0};
-    const zmk_usb_bridge_mouse_body_t mouse = {0};
     zmk_usb_bridge_status_t status;
 
-    status = zmk_usb_bridge_usb_bridge_send_keyboard(&keyboard);
-    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
-        return status;
-    }
-
-    status = zmk_usb_bridge_usb_bridge_send_consumer(&consumer);
-    if (status != ZMK_USB_BRIDGE_STATUS_OK) {
-        return status;
-    }
-
-    return zmk_usb_bridge_usb_bridge_send_mouse(&mouse);
+    k_mutex_lock(&g_usb_lock, K_FOREVER);
+    g_safe_state_pending = true;
+    status = flush_safe_state_locked();
+    k_mutex_unlock(&g_usb_lock);
+    return status;
 }
