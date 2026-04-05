@@ -38,6 +38,20 @@ PC とは USB HID デバイスとして接続し、キーボードとは BLE で
 - 要件整理: [docs/foundation/requirements.md](docs/foundation/requirements.md)
 - 想定アーキテクチャと技術論点: [docs/foundation/architecture.md](docs/foundation/architecture.md)
 
+## GitHub Actions での self-build
+
+このリポジトリは、GitHub Actions から `Seeed XIAO nRF52840` 向け firmware をビルドし、`UF2` を artifact として取得できるようにしています。
+フォーク利用時の基本導線は次のとおりです。
+
+1. この repository を fork する
+2. 必要なら `config/user.conf` を編集して、自分の利用条件に合わせる
+3. fork 側で `Build Firmware` workflow を実行する
+4. Actions の実行結果から artifact をダウンロードする
+5. 展開した artifact 内の `zephyr.uf2` を board の bootloader drive へコピーする
+
+標準 artifact は `release profile` で、`zephyr.uf2` に加えて `zephyr.hex`、`build.log`、`command.txt`、`build_meta.json`、`README.txt` を含みます。
+bring-up 用には `workflow_dispatch` から `dev-usb-logging` profile も選べます。
+
 ## 備考
 
 このリポジトリは、ZMK 標準の dongle mode をそのまま利用する前提ではありません。

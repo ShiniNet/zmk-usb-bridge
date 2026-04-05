@@ -87,7 +87,6 @@
 - ボタン長押し時間と LED 表示パターン
 - user config の対象項目をどこまで初期公開するか
 - `release profile` と `dev profile` の差分をどこまで持つか
-- artifact へ利用者向け簡易書き込み手順書を同梱するか
 - `Zephyr USB device stack` 上で `single HID interface + report IDs` をどこまで素直に実現できるか
 
 ## 受け入れ判定の観点

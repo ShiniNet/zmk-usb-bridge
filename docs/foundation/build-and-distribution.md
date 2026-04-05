@@ -13,6 +13,7 @@
 - build 基盤の `zephyr` は `zmkfirmware/zephyr v3.5.0+zmk-fixes` に pin する
 - 開発の主経路は workspace 直下 `scripts/build_zmk_usb_bridge.sh` とし、その内部で `west build` を用いる
 - 利用者配布は `fork -> GitHub Actions -> artifact download -> local flashing` を標準導線にする
+- repository 内の `.github/workflows/build.yml` を fork 上 self-build の標準 workflow とする
 - 利用者設定は repository 追跡下の設定フラグメントで扱う
 - 中央 repository から恒久 firmware release を配る前提は置かない
 
@@ -29,6 +30,7 @@
 - 初回依存取得は `west init -l ShiniNet/zmk-usb-bridge` で workspace root を作成し、その後 `ShiniNet/` で `west update` を実行する
 - repository 既定の `config/user.conf` は application 側で自動取り込みする
 - CI 専用差分だけを追加したい場合は build script を拡張するか、例外的に `west build ... -- -DEXTRA_CONF_FILE=config/ci.conf` を明示利用する
+- repository 内 `scripts/ci_build_bundle.sh` は GitHub Actions 用の build + artifact 収集入口とする
 - 実機 bring-up の第一候補は build script の `dev-usb-logging profile` による `USB CDC ACM logging` 導線とする
 - Windows での実機 log capture は workspace 直下 `scripts/start_zmk_usb_bridge_session_windows.ps1` を第一候補にする
 - `\\wsl.localhost\...` 経由で script を呼ぶ場合は `ExecutionPolicy Bypass` 付き PowerShell 起動を標準にする
@@ -65,6 +67,8 @@
 - `snippets/zub-usb-logging/`: 開発者向け `USB CDC ACM logging` snippet
 - workspace `scripts/build_zmk_usb_bridge.sh`: 開発用 build wrapper
 - workspace `scripts/start_zmk_usb_bridge_session_windows.ps1`: Windows 実機 log capture helper
+- repository `.github/workflows/build.yml`: fork 含む GitHub Actions self-build workflow
+- repository `scripts/ci_build_bundle.sh`: GitHub Actions 向け build/artifact bundler
 - workspace `build/<board>/<profile>/`: board/profile ごとの作業 build directory
 - workspace `artifacts/builds/<timestamp>_<profile>_<board>/`: build 履歴 artifact
 - workspace `artifacts/builds/latest/<profile>_<board>/`: 直近 build の参照先
@@ -101,16 +105,19 @@
 ## CI / Artifact Model
 
 - build は upstream repository または利用者 fork 上の GitHub Actions で実行する
+- workflow 名は `Build Firmware` とする
+- `push` と `pull_request` では `release profile` を標準 build とする
+- `workflow_dispatch` では `release`、`dev-usb-logging`、`all` を選べるようにする
 - 配布単位の第一候補は `workflow artifact`
 - 標準 artifact は `release profile` の build 結果を格納する
 - `Seeed XIAO nRF52840` 向けの主導線は `zephyr.uf2` とする
 - 補助導線として `zephyr.hex` と build metadata を含める
+- artifact には `README.txt` を同梱し、最短の書き込み手順を一緒に配布する
 - ローカル build script も `zephyr.uf2`、`zephyr.hex`、`zephyr.elf`、`zephyr.map`、config/dts と build metadata を残す
 - 外部 debug probe 利用者向けには `west flash` 前提の補助手順を許容する
 
 ## Open Questions
 
-- artifact に利用者向け簡易書き込み手順書を同梱するか
 - `release profile` と `dev profile` の差分をどこまで持つか
 - `UF2` を主導線にしたとき、量産向け custom board artifact をどう並列管理するか
 
@@ -124,6 +131,7 @@
 - `zub-usb-logging` build で `COM port` 監視だけで十分な runtime log が得られるか
 - `dev-rtt profile` で USB HID presentation を崩さず十分な runtime log が得られるか
 - `release profile` と `dev profile` の責務分離が運用上破綻しないか
+- GitHub-hosted runner 上で `Build Firmware` workflow が fork 含め安定して完走するか
 
 ## Related Documents
 
