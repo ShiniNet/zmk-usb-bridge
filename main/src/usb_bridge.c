@@ -94,10 +94,10 @@ static const uint8_t zmk_usb_bridge_hid_report_desc[] = {
     HID_REPORT_SIZE(8),
     HID_REPORT_COUNT(6),
     HID_LOGICAL_MIN8(0),
-    HID_LOGICAL_MAX8(101),
+    HID_LOGICAL_MAX16(0xFF, 0x00),
     HID_USAGE_PAGE(HID_USAGE_GEN_DESKTOP_KEYPAD),
     HID_USAGE_MIN8(0),
-    HID_USAGE_MAX8(101),
+    HID_USAGE_MAX8(0xFF),
     HID_INPUT(0x00),
     HID_END_COLLECTION,
 
