@@ -332,7 +332,7 @@ copy_if_exists "$STAGING_DIR/zephyr.uf2" "$ARTIFACT_DIR/zephyr.uf2"
 copy_if_exists "$USER_README_FILE" "$ARTIFACT_DIR/README.txt"
 
 if [[ -n "$DEBUG_ARTIFACT_DIR" ]]; then
-    rm -f "$DEBUG_ARTIFACT_DIR"/*
+    find "$DEBUG_ARTIFACT_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     while IFS=$'\t' read -r label artifact_path; do
         if [[ -n "$artifact_path" && -f "$artifact_path" ]]; then
             cp -f "$artifact_path" "$DEBUG_ARTIFACT_DIR/$(basename "$artifact_path")"
@@ -342,7 +342,7 @@ if [[ -n "$DEBUG_ARTIFACT_DIR" ]]; then
 fi
 
 if [[ "$PROFILE" != "release" ]]; then
-    rm -f "$ARTIFACT_DIR"/*
+    find "$ARTIFACT_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     while IFS=$'\t' read -r label artifact_path; do
         if [[ -n "$artifact_path" && -f "$artifact_path" ]]; then
             cp -f "$artifact_path" "$ARTIFACT_DIR/$(basename "$artifact_path")"

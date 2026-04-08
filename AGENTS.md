@@ -14,6 +14,8 @@ Keep `README.md` end-user facing. Put design detail in `docs/`.
 - Design doc index: `docs/README.md`
 - Requirements and scope: `docs/foundation/requirements.md`
 - Architecture and technical issues: `docs/foundation/architecture.md`
+- Developer workflow: `docs/development/workspace-setup.md`
+- AI workflow: `docs/development/ai-workflow.md`
 
 ## Important Assumptions
 - Unmodified-keyboard support is required.
@@ -30,12 +32,16 @@ Keep `README.md` end-user facing. Put design detail in `docs/`.
 - Put design details under the appropriate `docs/` category directory instead of adding more files to `docs/` root.
 - Do not quietly steer the project toward ZMK split-central dongle mode.
 - Do not expand scope to multiple keyboards or desktop configuration apps unless the user changes direction.
+- Treat workspace-root scripts as the primary local entrypoints for build, ZTEST, and log capture.
+- When implementation behavior changes, update the related validation or workflow docs in the same pass.
+- Prefer small, testable logic seams that can be covered by ZTEST before leaning on manual hardware-only verification.
 
 ## Change Priorities
 1. Requirements alignment
 2. Terminology clarity
 3. Separation between user-facing and design-facing docs
 4. Fast lookup for future Codex runs
+5. Reproducible build / test / logging workflow
 
 ## Still Unsettled
 - Quantitative targets

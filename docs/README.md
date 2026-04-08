@@ -36,6 +36,15 @@ BLE、USB、Recovery UI など、機能単位の詳細設計を置く。
 - `validation/status.md`
 - `validation/debugging.md`
 
+### `development/`
+
+WSL / VSCode / AI 支援を含む開発運用を置く。
+
+- `development/README.md`
+- `development/workspace-setup.md`
+- `development/ai-workflow.md`
+- `development/prompt-templates.md`
+
 ### `adr/`
 
 採用判断や比較結果を ADR として残す。

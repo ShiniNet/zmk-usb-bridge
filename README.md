@@ -37,6 +37,8 @@ PC とは USB HID デバイスとして接続し、キーボードとは BLE で
 - 設計文書の入口: [docs/README.md](docs/README.md)
 - 要件整理: [docs/foundation/requirements.md](docs/foundation/requirements.md)
 - 想定アーキテクチャと技術論点: [docs/foundation/architecture.md](docs/foundation/architecture.md)
+- 開発運用の入口: [docs/development/README.md](docs/development/README.md)
+- コントリビューション導線: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## GitHub Actions での self-build
 
@@ -57,3 +59,8 @@ bring-up 用には `workflow_dispatch` から `dev-usb-logging` profile も選�
 
 このリポジトリは、ZMK 標準の dongle mode をそのまま利用する前提ではありません。
 ドングル自体が BLE ホストとして既存の ZMK キーボードを受け入れる、無改造接続型のブリッジを対象としています。
+
+## 開発メモ
+
+WSL2 + VSCode 前提のローカル開発導線は、workspace root 直下の `scripts/` に寄せる方針です。
+詳細は [docs/development/workspace-setup.md](docs/development/workspace-setup.md) を参照してください。
